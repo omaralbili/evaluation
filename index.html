@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>منصة الاختبارات الإلكترونية الذكية المؤمنة</title>
+  
+  <!-- المكتبات الأساسية الخارجية -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- ملف التصميم المخصص والمنفصل -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- شريط الملاحة العلوي -->
+  <header id="navbar" class="nav-header">
+    <div class="max-w-6xl mx-auto px-4 py-3.5 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <span class="brand-badge">
+          <i class="fa-solid fa-shield-halved"></i>
+        </span>
+        <div>
+          <h1 class="text-base font-bold text-slate-900 leading-tight">منصة الاختبارات الذكية</h1>
+          <p class="text-xs text-slate-500">نظام التقييم الإلكتروني المحمي</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="showSection('student-login')" class="btn btn-outline text-xs">
+          <i class="fa-solid fa-graduation-cap"></i> بوابة الطالب
+        </button>
+        <a href="faculty.html" class="btn btn-outline text-xs text-sky-700 border-sky-300 hover:bg-sky-50">
+          <i class="fa-solid fa-chalkboard-user"></i> بوابة عضو هيئة التدريس
+        </a>
+        <button onclick="showSection('admin-login')" class="btn btn-primary text-xs">
+          <i class="fa-solid fa-shield-halved"></i> الإدارة العامة
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- المحتوى الرئيسي -->
+  <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6">
+
+    <!-- 1. شاشة دخول الطالب -->
+    <section id="student-login" class="max-w-lg mx-auto mt-4 md:mt-8 animate-fade-in">
+      <div class="app-card p-6 md:p-8">
+        <div class="text-center mb-6">
+          <div class="w-14 h-14 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl border border-blue-100">
+            <i class="fa-solid fa-user-graduate"></i>
+          </div>
+          <h2 class="text-xl font-bold text-slate-900">تسجيل دخول الاختبار</h2>
+          <p class="text-xs text-slate-500 mt-1">يرجى اختيار الفرقة والفرع وإدخال كود الامتحان وكلمة المرور الخاصة بك</p>
+        </div>
+
+        <div class="alert-box alert-warning mb-5">
+          <i class="fa-solid fa-circle-exclamation text-base mt-0.5 text-amber-600"></i>
+          <div class="text-xs space-y-1">
+            <span class="font-bold block text-slate-800">تعليمات أمنية ونظامية:</span>
+            <p>• كلمة المرور خاصة بكل طالب ويتم التحقق من مطابقتها لنمط الفرقة وتفردها (لا تتكرر).</p>
+            <p>• سيتم تفعيل وضع ملء الشاشة وحظر الخروج أو فتح تبويبات جديدة كلياً.</p>
+          </div>
+        </div>
+
+        <form onsubmit="startStudentExam(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">اسم الطالب بالكامل</label>
+            <input type="text" id="st-name" required class="input-field" placeholder="مثال: أحمد محمد علي">
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1.5">الفرقة الدراسية</label>
+              <select id="st-grade" required onchange="onGradeChange()" class="input-field bg-white cursor-pointer font-semibold">
+                <option value="الفرقة الأولى">الفرقة الأولى</option>
+                <option value="الفرقة الثانية">الفرقة الثانية</option>
+                <option value="الفرقة الثالثة">الفرقة الثالثة</option>
+                <option value="الفرقة الرابعة">الفرقة الرابعة</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1.5">الفرع</label>
+              <select id="st-branch" required class="input-field bg-white cursor-pointer font-semibold">
+                <option value="المنصورة">المنصورة</option>
+                <option value="منية النصر">منية النصر</option>
+                <option value="ميت غمر">ميت غمر</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1.5">الرقم التعريفي / الجامعي (ID)</label>
+              <input type="text" id="st-id" required class="input-field font-mono" placeholder="مثال: 20261045">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1.5">كود الاختبار المعتمد</label>
+              <input type="text" id="st-exam-code" required class="input-field uppercase font-mono tracking-wider" placeholder="مثال: EX-9372">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">كلمة المرور الخاصة بالطالب</label>
+            <input type="password" id="st-password" required class="input-field font-mono" placeholder="اكتب كلمة المرور الخاصة بك الممنوحة لك...">
+          </div>
+
+          <button type="submit" class="btn btn-primary w-full py-3 mt-2 text-sm font-bold">
+            بدء الاختبار الآن <i class="fa-solid fa-arrow-left mr-1"></i>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- 2. قاعة الاختبار المؤمنة بالكامل -->
+    <section id="exam-room" class="hidden fixed inset-0 bg-slate-50 z-50 overflow-y-auto no-select flex flex-col">
+      <div class="sticky top-0 bg-white border-b border-slate-200 z-30">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+          <div>
+            <h3 id="exam-title-display" class="font-bold text-base md:text-lg text-slate-900 leading-tight">عنوان الامتحان</h3>
+            <span id="student-info-display" class="text-xs text-slate-500 font-medium"></span>
+          </div>
+          <div class="flex items-center gap-3">
+            <!-- زر الكاميرا للطالب للتحكم في البث المباشر والمراقبة -->
+            <button id="student-camera-btn" onclick="toggleStudentCamera()" class="btn btn-outline text-xs font-bold px-3 py-1.5 text-slate-700">
+              <i id="student-camera-icon" class="fa-solid fa-video-slash text-slate-400"></i>
+              <span id="student-camera-label">تشغيل الكاميرا</span>
+            </button>
+            <div id="timer-chip-container" class="timer-chip">
+              <i class="fa-regular fa-clock text-slate-400"></i>
+              <span id="timer-display">00:00</span>
+            </div>
+            <button onclick="confirmExitAndSubmit()" class="btn btn-danger text-xs font-bold px-4 py-2">
+              <i class="fa-solid fa-arrow-right-from-bracket"></i> حفظ الإجابات والخروج
+            </button>
+          </div>
+        </div>
+        <div class="exam-progress-bar">
+          <div id="exam-progress-fill" class="exam-progress-fill" style="width: 0%;"></div>
+        </div>
+        <div class="max-w-4xl mx-auto px-4 py-1 flex justify-between text-[11px] text-slate-500 font-semibold">
+          <span id="exam-progress-text">تمت الإجابة: 0</span>
+          <span><i class="fa-solid fa-shield-cat text-emerald-600"></i> وضع الحماية وملء الشاشة نشط</span>
+        </div>
+      </div>
+
+      <div id="questions-container" class="max-w-3xl w-full mx-auto p-4 md:p-6 space-y-5 pb-24 flex-1"></div>
+
+      <!-- نافذة الكاميرا المصغرة للطالب (PiP Floating Preview) -->
+      <div id="student-cam-preview-box" class="hidden fixed bottom-4 left-4 z-50 bg-slate-900 text-white rounded-xl shadow-lg border border-slate-700 overflow-hidden w-44 md:w-52 transition-all">
+        <div class="bg-slate-800 px-2.5 py-1.5 flex items-center justify-between text-[11px] border-b border-slate-700">
+          <span class="flex items-center gap-1.5 text-emerald-400 font-bold">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> بث مباشر نشط
+          </span>
+          <button onclick="toggleStudentCamera()" class="text-slate-400 hover:text-white text-xs">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <video id="student-video-element" autoplay playsinline muted class="w-full h-32 md:h-36 object-cover bg-black"></video>
+      </div>
+    </section>
+
+    <!-- 3. شاشة تسجيل دخول الإدارة العامة -->
+    <section id="admin-login" class="hidden max-w-md mx-auto mt-8 md:mt-12">
+      <div class="app-card p-6 md:p-8">
+        <div class="text-center mb-6">
+          <div class="w-14 h-14 bg-slate-100 text-slate-800 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl border border-slate-200">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
+          <h2 class="text-xl font-bold text-slate-900">تسجيل دخول الإدارة العامة</h2>
+          <p class="text-xs text-slate-500 mt-1">إدارة الفرق، المعلمين، وقواعد الـ Regex والنتائج</p>
+        </div>
+
+        <form onsubmit="adminLogin(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">اسم المستخدم للمدير</label>
+            <input type="text" id="adm-user" required class="input-field" placeholder="admin">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">كلمة المرور</label>
+            <input type="password" id="adm-pass" required class="input-field" placeholder="••••••••">
+          </div>
+          <button type="submit" class="btn btn-primary w-full py-2.5 mt-2 text-sm font-bold">
+            تسجيل الدخول <i class="fa-solid fa-arrow-left mr-1"></i>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- 4. لوحة الإدارة والتحكم (Dashboard) -->
+    <section id="dashboard" class="hidden space-y-6">
+      <!-- الترويسة -->
+      <div class="app-card p-4 md:p-5 flex flex-wrap justify-between items-center gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+            <i class="fa-solid fa-user-shield"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900">مرحباً، <span id="dash-username" class="text-blue-600"></span></h2>
+            <span id="dash-role-badge" class="badge badge-primary text-[11px] mt-0.5">مدير عام</span>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="loadDashboardData()" class="btn btn-outline text-xs">
+            <i class="fa-solid fa-arrows-rotate"></i> تحديث النتائج
+          </button>
+          <button onclick="logoutAdmin()" class="btn btn-outline text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i> خروج
+          </button>
+        </div>
+      </div>
+
+      <!-- قسم التحكم في قواعد Regex لكل فرقة دراسية -->
+      <div id="regex-settings-panel" class="app-card p-5 md:p-6 border-l-4 border-l-indigo-600">
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-wand-magic-sparkles text-indigo-600"></i> ضبط قواعد التعبير النمطي (Regex) لكلمات مرور الفرق
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">يتم تطبيق هذا الـ Regex تلقائياً في شاشة دخول الطالب بناءً على الفرقة التي يختارها، ولا يُسمح بتكرار كلمة المرور بين الطلاب نهائياً.</p>
+          </div>
+          <button onclick="saveRegexSettings()" class="btn btn-primary text-xs font-bold">
+            <i class="fa-solid fa-floppy-disk"></i> حفظ قواعد الـ Regex
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- الفرقة الأولى -->
+          <div class="p-4 border rounded-xl bg-slate-50 space-y-2">
+            <span class="font-bold text-xs text-indigo-700">1. الفرقة الأولى</span>
+            <div>
+              <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">قاعدة الـ Regex:</label>
+              <input type="text" id="regex-grade-1" class="input-field text-xs font-mono" placeholder="مثال: ^G1-[0-9]{4}$">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">وصف / مثال يظهر للطالب:</label>
+              <input type="text" id="hint-grade-1" class="input-field text-xs" placeholder="مثال: تبدأ بـ G1- متبوعة بـ 4 أرقام مثل G1-1234">
+            </div>
+          </div>
+
+          <!-- الفرقة الثانية -->
+          <div class="p-4 border rounded-xl bg-slate-50 space-y-2">
+            <span class="font-bold text-xs text-indigo-700">2. الفرقة الثانية</span>
+            <div>
+              <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">قاعدة الـ Regex:</label>
+              <input type="text" id="regex-grade-2" class="input-field text-xs font-mono" placeholder="مثال: ^G2-[0-9]{4}$">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">وصف / مثال يظهر للطالب:</label>
+              <input type="text" id="hint-grade-2" class="input-field text-xs" placeholder="مثال: تبدأ بـ G2- متبوعة بـ 4 أرقام مثل G2-1234">
+            </div>
+          </div>
+
+          <!-- الفرقة الثالثة -->
+          <div class="p-4 border rounded-xl bg-slate-50 space-y-2">
+            <span class="font-bold text-xs text-indigo-700">3. الفرقة الثالثة</span>
+            <div>
+              <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">قاعدة الـ Regex:</label>
+              <input type="text" id="regex-grade-3" class="input-field text-xs font-mono" placeholder="مثال: ^G3-[0-9]{4}$">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">وصف / مثال يظهر للطالب:</label>
+              <input type="text" id="hint-grade-3" class="input-field text-xs" placeholder="مثال: تبدأ بـ G3- متبوعة بـ 4 أرقام مثل G3-1234">
+            </div>
+          </div>
+
+          <!-- الفرقة الرابعة -->
+          <div class="p-4 border rounded-xl bg-slate-50 space-y-2">
+            <span class="font-bold text-xs text-indigo-700">4. الفرقة الرابعة</span>
+            <div>
+              <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">قاعدة الـ Regex:</label>
+              <input type="text" id="regex-grade-4" class="input-field text-xs font-mono" placeholder="مثال: ^G4-[0-9]{4}$">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">وصف / مثال يظهر للطالب:</label>
+              <input type="text" id="hint-grade-4" class="input-field text-xs" placeholder="مثال: تبدأ بـ G4- متبوعة بـ 4 أرقام مثل G4-1234">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- قسم التحكم الشامل في الامتحانات للإدارة العامة (إيقاف / تفعيل / حذف) -->
+      <div class="app-card p-5 md:p-6 bg-white border-l-4 border-l-amber-500">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-layer-group text-amber-600"></i> التحكم المركزي في جميع الامتحانات المنشورة
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">يمكن للمدير العام إيقاف أي امتحان مؤقتاً أو تفعيله أو حذفه بالكامل من قاعدة البيانات</p>
+          </div>
+          <button onclick="loadAdminExamsList()" class="btn btn-outline text-xs">
+            <i class="fa-solid fa-arrows-rotate"></i> تحديث قائمة الامتحانات
+          </button>
+        </div>
+
+        <div class="overflow-x-auto border rounded-lg">
+          <table class="clean-table">
+            <thead>
+              <tr>
+                <th>كود الامتحان</th>
+                <th>عنوان الامتحان</th>
+                <th>واضع الامتحان</th>
+                <th>المدة</th>
+                <th>الأسئلة</th>
+                <th>تاريخ النشر</th>
+                <th>الحالة</th>
+                <th>التحكم والإجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="admin-exams-tbody">
+              <tr>
+                <td colspan="8" class="p-6 text-center text-slate-400">انقر على "تحديث قائمة الامتحانات" لعرض الاختبارات</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- قسم إضافة وإدارة أعضاء هيئة التدريس -->
+      <div id="super-admin-panel" class="app-card p-5 border-amber-200 space-y-5">
+        <div>
+          <h3 class="text-sm font-bold mb-3 text-slate-800 flex items-center gap-2">
+            <i class="fa-solid fa-user-plus text-amber-600"></i> إضافة حساب عضو هيئة تدريس / واضع اختبارات جديد
+          </h3>
+          <form onsubmit="addExaminer(event)" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <input type="text" id="new-ex-name" required placeholder="الاسم الكامل للأستاذ" class="input-field text-xs">
+            <input type="text" id="new-ex-user" required placeholder="اسم المستخدم" class="input-field text-xs">
+            <input type="text" id="new-ex-pass" required placeholder="كلمة المرور" class="input-field text-xs">
+            <button type="submit" class="btn btn-primary text-xs font-bold">
+              <i class="fa-solid fa-check"></i> حفظ الحساب
+            </button>
+          </form>
+        </div>
+
+        <!-- قائمة أعضاء هيئة التدريس مع إمكانية الحذف الشامل -->
+        <div class="pt-4 border-t">
+          <div class="flex justify-between items-center mb-3">
+            <h4 class="text-xs font-bold text-slate-800 flex items-center gap-2">
+              <i class="fa-solid fa-users-gear text-slate-600"></i> قائمة أعضاء هيئة التدريس المسجلين (الحذف الشامل للمستخدم واختباراته ونتائجه)
+            </h4>
+            <button onclick="loadFacultyAccountsList()" class="btn btn-outline text-[11px] py-1 px-2.5">
+              <i class="fa-solid fa-arrows-rotate"></i> تحديث القائمة
+            </button>
+          </div>
+
+          <div class="overflow-x-auto border rounded-lg">
+            <table class="clean-table">
+              <thead>
+                <tr>
+                  <th>اسم الأستاذ</th>
+                  <th>اسم المستخدم</th>
+                  <th>الصلاحية</th>
+                  <th>الإجراء الحاسم</th>
+                </tr>
+              </thead>
+              <tbody id="faculty-accounts-tbody">
+                <tr>
+                  <td colspan="4" class="p-4 text-center text-slate-400">انقر على "تحديث القائمة" لعرض الأساتذة</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- جدول نتائج الطلاب الشامل -->
+      <div class="app-card p-5 md:p-6 overflow-hidden">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-square-poll-vertical text-emerald-600"></i> سجل نتائج الطلاب والمراقبة لجميع الفرق والفروع
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">عرض وتصدير كامل للدرجات مع بيانات الفرقة والفرع وكلمة المرور</p>
+          </div>
+          
+          <div class="flex flex-wrap items-center gap-2">
+            <input type="text" id="filter-exam-code" onkeyup="filterResultsTable()" placeholder="ابحث بكود الامتحان أو اسم الطالب أو الفرقة أو الفرع..." class="input-field text-xs w-48 md:w-72">
+            <button onclick="exportResultsToExcel()" class="btn btn-success text-xs font-bold">
+              <i class="fa-solid fa-file-excel"></i> تصدير Excel
+            </button>
+            <button onclick="confirmClearResultsAdmin()" class="btn btn-danger text-xs font-bold">
+              <i class="fa-solid fa-trash-can"></i> تفريغ النتائج
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto border rounded-lg">
+          <table id="results-table" class="clean-table">
+            <thead>
+              <tr>
+                <th>التاريخ والوقت</th>
+                <th>كود الامتحان</th>
+                <th>اسم الطالب</th>
+                <th>الرقم التعريفي</th>
+                <th>الفرقة</th>
+                <th>الفرع</th>
+                <th>كلمة المرور</th>
+                <th>النتيجة</th>
+                <th>حالة التسليم</th>
+              </tr>
+            </thead>
+            <tbody id="results-table-body">
+              <tr>
+                <td colspan="9" class="p-6 text-center text-slate-400">انقر على زر "تحديث النتائج" لجلب البيانات</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="py-4 border-t border-slate-200 text-center text-xs text-slate-400 bg-white">
+    منظومة الامتحانات الذكية المؤمنة &copy; 2026 - نظام تقييم إلكتروني محمي ومتكامل
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

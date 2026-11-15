@@ -1,0 +1,370 @@
+/* ==========================================================================
+   منظومة أنماط منصة الاختبارات الذكية - Modern Minimal Clean UI
+   توجيهات التصميم:
+   1. واجهة واقعية واحترافية وهادئة بعيدة عن الظلال الكثيفة (Minimalist Flat / Subtle Borders).
+   2. أنيميشن سلس ومريح للأعصاب (Fade, Slide, Scale सूक्ष्म).
+   3. خط عربي عصري ومقروء وألوان متناسقة ومريحة للعين أثناء الامتحانات.
+   ========================================================================== */
+
+:root {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+  --primary-ring: rgba(37, 99, 235, 0.18);
+
+  --slate-900: #0f172a;
+  --slate-800: #1e293b;
+  --slate-700: #334155;
+  --slate-600: #475569;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-200: #e2e8f0;
+  --slate-100: #f1f5f9;
+  --slate-50:  #f8fafc;
+  
+  --emerald-600: #059669;
+  --emerald-50: #ecfdf5;
+  --rose-600: #e11d48;
+  --rose-50: #fff1f2;
+  --amber-600: #d97706;
+  --amber-50: #fffbeb;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  /* لمسات خفيفة بدون شادوهات كثيفة */
+  --border-subtle: 1px solid #e2e8f0;
+  --shadow-subtle: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  --shadow-floating: 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* التنسيقات العامة */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--slate-50);
+  color: var(--slate-800);
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* منع التحديد والنسخ والسحب داخل الامتحان */
+.no-select {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* شريط التنقل العلوي */
+.nav-header {
+  background: #ffffff;
+  border-bottom: var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.brand-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 1.15rem;
+  transition: transform var(--transition-smooth);
+}
+
+.brand-badge:hover {
+  transform: scale(1.05);
+}
+
+/* البطاقات والحاويات - بديل الظلال الكثيفة: حواف نظيفة ولمسة خفيفة جداً */
+.app-card {
+  background: #ffffff;
+  border: var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-subtle);
+  transition: border-color var(--transition-fast);
+}
+
+/* حقول الإدخال */
+.input-field {
+  width: 100%;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  padding: 0.68rem 0.95rem;
+  background: #ffffff;
+  color: var(--slate-800);
+  font-size: 0.92rem;
+  font-family: inherit;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
+/* الأزرار العصرية والناعمة */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.65rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  user-select: none;
+}
+
+.btn:active {
+  transform: scale(0.985);
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+}
+
+.btn-outline {
+  background-color: #ffffff;
+  border-color: var(--slate-200);
+  color: var(--slate-700);
+}
+
+.btn-outline:hover {
+  background-color: var(--slate-100);
+  border-color: var(--slate-300);
+}
+
+.btn-success {
+  background-color: var(--emerald-600);
+  color: #ffffff;
+}
+
+.btn-success:hover {
+  background-color: #047857;
+}
+
+.btn-danger {
+  background-color: var(--rose-600);
+  color: #ffffff;
+}
+
+.btn-danger:hover {
+  background-color: #be123c;
+}
+
+/* خيارات الإجابة في الامتحان */
+.option-label {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background-color: #ffffff;
+  transition: all var(--transition-smooth);
+  position: relative;
+}
+
+.option-label:hover {
+  background-color: var(--slate-50);
+  border-color: var(--slate-400);
+}
+
+.option-label.is-selected {
+  background-color: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--slate-900);
+  font-weight: 600;
+}
+
+.option-radio {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* شريط التقدم للامتحان */
+.exam-progress-bar {
+  height: 4px;
+  background-color: var(--slate-200);
+  width: 100%;
+  overflow: hidden;
+}
+
+.exam-progress-fill {
+  height: 100%;
+  background-color: var(--primary);
+  transition: width var(--transition-smooth);
+}
+
+/* بطاقة السؤال */
+.question-card {
+  background: #ffffff;
+  border: var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  transition: transform var(--transition-smooth), border-color var(--transition-smooth);
+}
+
+.question-card:focus-within {
+  border-color: #cbd5e1;
+}
+
+/* جدول النتائج */
+.clean-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: right;
+}
+
+.clean-table th {
+  background-color: var(--slate-50);
+  color: var(--slate-600);
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--slate-200);
+}
+
+.clean-table td {
+  padding: 0.95rem 1rem;
+  border-bottom: 1px solid var(--slate-100);
+  font-size: 0.88rem;
+  color: var(--slate-700);
+}
+
+.clean-table tr:last-child td {
+  border-bottom: none;
+}
+
+.clean-table tr:hover td {
+  background-color: #fafbfc;
+}
+
+/* مؤشرات الحالة (Badges) */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-success {
+  background-color: var(--emerald-50);
+  color: var(--emerald-600);
+  border: 1px solid rgba(5, 150, 105, 0.2);
+}
+
+.badge-danger {
+  background-color: var(--rose-50);
+  color: var(--rose-600);
+  border: 1px solid rgba(225, 29, 72, 0.2);
+}
+
+.badge-primary {
+  background-color: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+/* أنيميشن ناعمة وخفيفة (Micro-interactions) */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 220ms ease-out forwards;
+}
+
+/* صندوق التنبيهات */
+.alert-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.alert-warning {
+  background-color: #fffbeb;
+  border: 1px solid #fef3c7;
+  color: #92400e;
+}
+
+.alert-danger {
+  background-color: #fff1f2;
+  border: 1px solid #ffe4e6;
+  color: #9f1239;
+}
+
+/* شاشة مؤقت الامتحان الهدوء والتركيز */
+.timer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--slate-100);
+  border: 1px solid var(--slate-200);
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-md);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--slate-800);
+}
+
+.timer-chip.is-urgent {
+  background-color: var(--rose-50);
+  border-color: #fecdd3;
+  color: var(--rose-600);
+  animation: pulseGentle 1.5s infinite;
+}
+
+@keyframes pulseGentle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}

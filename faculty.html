@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بوابة عضو هيئة التدريس | إعداد ونشر الاختبارات</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- الشريط العلوي -->
+  <header class="nav-header">
+    <div class="max-w-6xl mx-auto px-4 py-3.5 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <span class="brand-badge" style="background:#e0f2fe; color:#0284c7;">
+          <i class="fa-solid fa-chalkboard-user"></i>
+        </span>
+        <div>
+          <h1 class="text-base font-bold text-slate-900 leading-tight">بوابة عضو هيئة التدريس</h1>
+          <p class="text-xs text-slate-500">نظام إعداد وإدارة الاختبارات الإلكترونية</p>
+        </div>
+      </div>
+      <div id="faculty-nav-actions" class="hidden flex items-center gap-3">
+        <span id="faculty-name-badge" class="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200"></span>
+        <button onclick="facultyLogout()" class="btn btn-outline text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- المحتوى الرئيسي -->
+  <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6">
+
+    <!-- شاشة تسجيل دخول عضو هيئة التدريس -->
+    <section id="faculty-login-section" class="max-w-md mx-auto mt-8 md:mt-12 animate-fade-in">
+      <div class="app-card p-6 md:p-8">
+        <div class="text-center mb-6">
+          <div class="w-14 h-14 bg-sky-50 text-sky-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl border border-sky-100">
+            <i class="fa-solid fa-user-pen"></i>
+          </div>
+          <h2 class="text-xl font-bold text-slate-900">دخول عضو هيئة التدريس</h2>
+          <p class="text-xs text-slate-500 mt-1">يرجى تسجيل الدخول للبدء في وضع أسئلة الاختبار</p>
+        </div>
+
+        <form onsubmit="handleFacultyLogin(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">اسم المستخدم الخاص بالأستاذ</label>
+            <input type="text" id="faculty-user" required class="input-field" placeholder="مثال: islam أو mohamed">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">كلمة المرور</label>
+            <input type="password" id="faculty-pass" required class="input-field" placeholder="••••••••">
+          </div>
+          <button type="submit" class="btn btn-primary w-full py-2.5 mt-2 text-sm font-bold" style="background:#0284c7;">
+            دخول صفحة إعداد الاختبار <i class="fa-solid fa-arrow-left mr-1"></i>
+          </button>
+        </form>
+
+        <div class="mt-6 pt-4 border-t text-center">
+          <a href="index.html" class="text-xs font-bold text-slate-500 hover:text-blue-600 inline-flex items-center gap-1.5">
+            <i class="fa-solid fa-arrow-right"></i> العودة إلى الصفحة الرئيسية
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- مساحة عمل المعلم (إنشاء الأسئلة وعرض الاختبارات) -->
+    <section id="faculty-workspace" class="hidden space-y-6 animate-fade-in">
+
+      <!-- ترويسة الترحيب -->
+      <div class="app-card p-5 flex flex-wrap justify-between items-center gap-4 bg-white border-l-4 border-l-sky-500">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">مرحباً بحضرتك، <span id="faculty-display-name" class="text-sky-600"></span></h2>
+          <p class="text-xs text-slate-500 mt-0.5">يمكنك الآن إعداد أسئلة الاختبار وتحديد مدته ونشره فوراً للطلاب</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="loadFacultyDashboard()" class="btn btn-outline text-xs">
+            <i class="fa-solid fa-arrows-rotate"></i> تحديث نتائج طلابي
+          </button>
+        </div>
+      </div>
+
+      <!-- محرر إنشاء ونشر الامتحان -->
+      <div class="app-card p-5 md:p-6 bg-white">
+        <div class="flex items-center justify-between pb-3 mb-4 border-b">
+          <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <i class="fa-solid fa-file-circle-plus text-sky-600"></i> إعداد اختبار إلكتروني جديد
+          </h3>
+          <span class="text-xs text-slate-400">جميع الأسئلة يتم حفظها سحابياً وتصحيحها آلياً</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">عنوان الاختبار / المادة</label>
+            <input type="text" id="faculty-exam-title" placeholder="ضع عنوان اختبارك هنا" class="input-field text-xs">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">كود الاختبار المعتمد (اتركه فارغاً للتوليد التلقائي)</label>
+            <input type="text" id="faculty-custom-code" placeholder="مثال: PHYS-101 أو اتركها فارغة" class="input-field text-xs font-mono uppercase tracking-wider">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">مدة الامتحان المحددة (بالدقائق)</label>
+            <input type="number" id="faculty-exam-duration" placeholder="مثال: 30" class="input-field text-xs">
+          </div>
+        </div>
+
+        <!-- حاوية الأسئلة المضافة -->
+        <div id="faculty-questions-container" class="space-y-4 mb-5"></div>
+
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t">
+          <button type="button" onclick="addFacultyQuestionField()" class="btn btn-outline text-xs">
+            <i class="fa-solid fa-plus text-sky-600"></i> إضافة سؤال جديد
+          </button>
+          <button type="button" onclick="publishFacultyExam()" class="btn btn-primary text-xs font-bold px-6 py-2.5" style="background:#0284c7;">
+            <i class="fa-solid fa-cloud-arrow-up"></i> حفظ ونشر الاختبار وتوليد الكود
+          </button>
+        </div>
+      </div>
+
+      <!-- قسم إدارة والتحكم في الاختبارات (إيقاف / تفعيل / حذف) -->
+      <div class="app-card p-5 md:p-6 bg-white border-l-4 border-l-amber-500">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-sliders text-amber-600"></i> إدارة الاختبارات التي أنشأتها (إيقاف / تفعيل / حذف)
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">يمكنك تعطيل الامتحان مؤقتاً لمنع دخول أي طالب إليه، أو إعادة تفعيله، أو حذفه نهائياً</p>
+          </div>
+          <button onclick="loadFacultyExamsList()" class="btn btn-outline text-xs">
+            <i class="fa-solid fa-arrows-rotate"></i> تحديث قائمة الاختبارات
+          </button>
+        </div>
+
+        <div class="overflow-x-auto border rounded-lg">
+          <table class="clean-table">
+            <thead>
+              <tr>
+                <th>كود الامتحان</th>
+                <th>عنوان الامتحان</th>
+                <th>المدة</th>
+                <th>عدد الأسئلة</th>
+                <th>تاريخ النشر</th>
+                <th>حالة الامتحان</th>
+                <th>الإجراءات والتحكم</th>
+              </tr>
+            </thead>
+            <tbody id="faculty-exams-tbody">
+              <tr>
+                <td colspan="7" class="p-6 text-center text-slate-400">جاري تحميل اختباراتك...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- غرفة المراقبة الحية بالكاميرا لجميع الطلاب (Live Proctored Video Grid) -->
+      <div class="app-card p-5 md:p-6 bg-white border-l-4 border-l-rose-500 space-y-4">
+        <div class="flex flex-wrap justify-between items-center gap-3 pb-3 border-b">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-video text-rose-600"></i> غرفة المراقبة المرئية المباشرة (Live Camera Monitoring)
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">متابعة بث كاميرات الطلاب الممتحنين لحظياً، وإرسال تنبيهات مباشرة لفتح الكاميرا</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="requestAllStudentsOpenCam()" class="btn btn-outline text-xs text-rose-600 border-rose-300 hover:bg-rose-50 font-bold">
+              <i class="fa-solid fa-bell"></i> إرسال إشعار للجميع بفتح الكاميرا
+            </button>
+            <button onclick="refreshLiveMonitoringGrid()" class="btn btn-primary text-xs font-bold" style="background:#0284c7;">
+              <i class="fa-solid fa-arrows-rotate"></i> تحديث شاشات الطلاب
+            </button>
+          </div>
+        </div>
+
+        <!-- شبكة شاشات بث الطلاب -->
+        <div id="live-monitoring-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div class="p-8 text-center text-slate-400 col-span-full border rounded-xl bg-slate-50">
+            <i class="fa-solid fa-users-viewfinder text-3xl mb-2 text-slate-300"></i>
+            <p class="text-xs">لا يوجد طلاب نشطون حالياً في قاعة الاختبار، أو لم يتم فتح كاميراتهم بعد.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- جدول نتائج الطلاب الخاص بالاختبارات التي أنشأها المعلم -->
+      <div class="app-card p-5 md:p-6 overflow-hidden bg-white">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-square-poll-vertical text-emerald-600"></i> نتائج الطلاب في اختباراتك
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">متابعة دقيقة للدرجات وحالات تسليم الطلاب</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="text" id="filter-faculty-results" onkeyup="filterFacultyTable()" placeholder="ابحث بكود الامتحان أو اسم الطالب..." class="input-field text-xs w-48 md:w-64">
+            <button onclick="exportResultsToExcel()" class="btn btn-success text-xs font-bold">
+              <i class="fa-solid fa-file-excel"></i> تصدير Excel مرتباً
+            </button>
+            <button onclick="confirmClearResults()" class="btn btn-danger text-xs font-bold">
+              <i class="fa-solid fa-trash-can"></i> حذف وتفريغ النتائج
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto border rounded-lg">
+          <table id="results-table" class="clean-table">
+            <thead>
+              <tr>
+                <th>التاريخ والوقت</th>
+                <th>كود الامتحان</th>
+                <th>اسم الطالب</th>
+                <th>الرقم التعريفي</th>
+                <th>الفرقة</th>
+                <th>الفرع</th>
+                <th>كلمة المرور</th>
+                <th>النتيجة</th>
+                <th>حالة التسليم</th>
+              </tr>
+            </thead>
+            <tbody id="faculty-results-tbody">
+              <tr>
+                <td colspan="9" class="p-6 text-center text-slate-400">انقر على "تحديث" لعرض أحدث نتائج الطلاب</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <footer class="py-4 border-t border-slate-200 text-center text-xs text-slate-400 bg-white">
+    بوابة عضو هيئة التدريس &copy; 2026 - نظام الاختبارات الإلكترونية المحمي
+  </footer>
+
+  <script src="app.js"></script>
+  <script>
+    // تفعيل فحص جلسة المعلم عند فتح الصفحة
+    document.addEventListener('DOMContentLoaded', () => {
+      const stored = sessionStorage.getItem('faculty_user');
+      if (stored) {
+        try {
+          currentUser = JSON.parse(stored);
+          showFacultyWorkspace();
+        } catch (e) {
+          sessionStorage.removeItem('faculty_user');
+        }
+      }
+    });
+
+    async function handleFacultyLogin(e) {
+      e.preventDefault();
+      const username = document.getElementById('faculty-user').value.trim();
+      const password = document.getElementById('faculty-pass').value.trim();
+
+      const res = await apiCall({ action: 'login', username, password });
+      if (res && res.status === 'success') {
+        currentUser = res;
+        sessionStorage.setItem('faculty_user', JSON.stringify(res));
+        showFacultyWorkspace();
+      } else {
+        Swal.fire('خطأ في الدخول', res ? res.message : 'بيانات الحساب غير صحيحة', 'error');
+      }
+    }
+
+    function showFacultyWorkspace() {
+      document.getElementById('faculty-login-section').classList.add('hidden');
+      document.getElementById('faculty-workspace').classList.remove('hidden');
+      document.getElementById('faculty-nav-actions').classList.remove('hidden');
+      document.getElementById('faculty-name-badge').innerText = currentUser.name;
+      document.getElementById('faculty-display-name').innerText = currentUser.name;
+
+      if (document.getElementById('faculty-questions-container').children.length === 0) {
+        addFacultyQuestionField();
+      }
+      loadFacultyExamsList();
+      loadFacultyDashboard();
+    }
+
+    function facultyLogout() {
+      currentUser = null;
+      sessionStorage.removeItem('faculty_user');
+      document.getElementById('faculty-workspace').classList.add('hidden');
+      document.getElementById('faculty-nav-actions').classList.add('hidden');
+      document.getElementById('faculty-login-section').classList.remove('hidden');
+    }
+
+    function addFacultyQuestionField() {
+      const container = document.getElementById('faculty-questions-container');
+      const idx = container.children.length + 1;
+      const div = document.createElement('div');
+      div.className = 'p-4 border rounded-xl bg-slate-50 space-y-3 q-block relative animate-fade-in';
+      div.innerHTML = `
+        <div class="flex justify-between items-center pb-2 border-b">
+          <span class="font-bold text-xs text-sky-700 bg-sky-100 px-2.5 py-1 rounded-md">السؤال رقم ${idx}</span>
+          ${idx > 1 ? `<button type="button" onclick="this.closest('.q-block').remove()" class="text-xs text-rose-500 hover:text-rose-700 font-bold"><i class="fa-solid fa-trash-can"></i> حذف هذا السؤال</button>` : ''}
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">نص السؤال:</label>
+          <input type="text" placeholder="اكتب نص السؤال هنا..." class="q-text input-field font-semibold" required>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 mb-0.5">الاختيار 1:</label>
+            <input type="text" placeholder="الخيار الأول" class="q-opt1 input-field text-xs" required>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 mb-0.5">الاختيار 2:</label>
+            <input type="text" placeholder="الخيار الثاني" class="q-opt2 input-field text-xs" required>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 mb-0.5">الاختيار 3:</label>
+            <input type="text" placeholder="الخيار الثالث" class="q-opt3 input-field text-xs" required>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 mb-0.5">الاختيار 4:</label>
+            <input type="text" placeholder="الخيار الرابع" class="q-opt4 input-field text-xs" required>
+          </div>
+        </div>
+        <div class="pt-1">
+          <label class="block text-xs font-bold text-slate-700 mb-1">حدد الإجابة الصحيحة النموذجية:</label>
+          <select class="q-correct input-field bg-white text-xs">
+            <option value="1">الإجابة الصحيحة: الاختيار 1</option>
+            <option value="2">الإجابة الصحيحة: الاختيار 2</option>
+            <option value="3">الإجابة الصحيحة: الاختيار 3</option>
+            <option value="4">الإجابة الصحيحة: الاختيار 4</option>
+          </select>
+        </div>
+      `;
+      container.appendChild(div);
+    }
+
+    async function publishFacultyExam() {
+      const title = document.getElementById('faculty-exam-title').value.trim();
+      const customCode = document.getElementById('faculty-custom-code').value.trim().toUpperCase();
+      const duration = document.getElementById('faculty-exam-duration').value.trim();
+      const blocks = document.querySelectorAll('#faculty-questions-container .q-block');
+
+      if (!title || !duration || blocks.length === 0) {
+        return Swal.fire('تنبيه', 'يرجى إكمال عنوان الامتحان ومدته وكتابة الأسئلة', 'warning');
+      }
+
+      const questions = [];
+      let isComplete = true;
+
+      blocks.forEach((b) => {
+        const text = b.querySelector('.q-text').value.trim();
+        const opt1 = b.querySelector('.q-opt1').value.trim();
+        const opt2 = b.querySelector('.q-opt2').value.trim();
+        const opt3 = b.querySelector('.q-opt3').value.trim();
+        const opt4 = b.querySelector('.q-opt4').value.trim();
+        const correct = b.querySelector('.q-correct').value;
+
+        if (!text || !opt1 || !opt2 || !opt3 || !opt4) {
+          isComplete = false;
+        }
+
+        questions.push({ text, opt1, opt2, opt3, opt4, correct });
+      });
+
+      if (!isComplete) {
+        return Swal.fire('تنبيه', 'يرجى ملء جميع الأسئلة وخياراتها الأربعة بالكامل', 'warning');
+      }
+
+      const res = await apiCall({
+        action: 'create_exam',
+        title,
+        custom_code: customCode,
+        duration,
+        creator: currentUser ? currentUser.username : 'faculty',
+        questions
+      });
+
+      if (res && res.status === 'success') {
+        Swal.fire({
+          title: 'تم نشر الاختبار بنجاح!',
+          html: `
+            <p class="text-sm text-slate-600 mb-2">كود الاختبار المعتمد لدخول الطلاب هو:</p>
+            <div class="p-4 bg-sky-50 border-2 border-sky-400 rounded-xl text-center my-2">
+              <span class="text-3xl font-extrabold text-sky-700 tracking-wider">${escapeHTML(res.exam_id)}</span>
+            </div>
+            <p class="text-xs text-slate-500">تم حفظ الامتحان في شيت قاعدة البيانات ويمكن للطلاب استخدامه الآن</p>
+          `,
+          icon: 'success',
+          confirmButtonText: 'تم، إغلاق'
+        });
+
+        document.getElementById('faculty-exam-title').value = '';
+        document.getElementById('faculty-custom-code').value = '';
+        document.getElementById('faculty-exam-duration').value = '';
+        document.getElementById('faculty-questions-container').innerHTML = '';
+        addFacultyQuestionField();
+        loadFacultyExamsList();
+        loadFacultyDashboard();
+      }
+    }
+
+    async function loadFacultyExamsList() {
+      if (!currentUser) return;
+      const res = await apiCall({
+        action: 'get_exams_list',
+        creator: currentUser.username,
+        role: currentUser.role
+      });
+
+      const tbody = document.getElementById('faculty-exams-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      if (!res || res.status !== 'success' || !res.exams || res.exams.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">لم تقم بنشر أي امتحانات بعد</td></tr>`;
+        return;
+      }
+
+      res.exams.forEach(exam => {
+        const isActive = exam.status === 'active';
+        tbody.innerHTML += `
+          <tr>
+            <td><span class="font-bold text-sky-600 font-mono">${escapeHTML(exam.id)}</span></td>
+            <td class="font-semibold text-slate-800">${escapeHTML(exam.title)}</td>
+            <td>${escapeHTML(exam.duration)} دقيقة</td>
+            <td>${escapeHTML(exam.questions_count)} سؤال</td>
+            <td class="text-xs text-slate-500 font-mono">${escapeHTML(exam.date)}</td>
+            <td>
+              <span class="badge ${isActive ? 'badge-success' : 'badge-danger'}">
+                <i class="fa-solid ${isActive ? 'fa-check' : 'fa-pause'}"></i>
+                ${isActive ? 'نشط ومتاح للطلاب' : 'موقوف ومغلق'}
+              </span>
+            </td>
+            <td>
+              <div class="flex items-center gap-1.5">
+                <button onclick="toggleExamStatus('${escapeHTML(exam.id)}')" class="btn btn-outline text-xs py-1 px-2.5 ${isActive ? 'text-amber-600 border-amber-300 hover:bg-amber-50' : 'text-emerald-600 border-emerald-300 hover:bg-emerald-50'}">
+                  <i class="fa-solid ${isActive ? 'fa-pause' : 'fa-play'}"></i>
+                  ${isActive ? 'إيقاف مؤقت' : 'تفعيل'}
+                </button>
+                <button onclick="deleteExamConfirm('${escapeHTML(exam.id)}')" class="btn btn-outline text-xs py-1 px-2.5 text-rose-600 border-rose-200 hover:bg-rose-50">
+                  <i class="fa-solid fa-trash-can"></i> حذف
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    async function toggleExamStatus(examId) {
+      const res = await apiCall({
+        action: 'toggle_exam_status',
+        exam_id: examId,
+        creator: currentUser ? currentUser.username : '',
+        role: currentUser ? currentUser.role : ''
+      });
+
+      if (res && res.status === 'success') {
+        Swal.fire('تم بنجاح', res.message, 'success');
+        loadFacultyExamsList();
+      } else {
+        Swal.fire('خطأ', res ? res.message : 'تعذر تغيير حالة الامتحان', 'error');
+      }
+    }
+
+    async function deleteExamConfirm(examId) {
+      Swal.fire({
+        title: 'تأكيد حذف الاختبار نهائياً',
+        text: `هل أنت متأكد من حذف الاختبار (${examId}) نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء!`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، احذف الامتحان',
+        cancelButtonText: 'إلغاء',
+        confirmButtonColor: '#e11d48',
+        cancelButtonColor: '#64748b'
+      }).then(async (result) => {
+        if (result.isConfirmed) {
+          const res = await apiCall({
+            action: 'delete_exam',
+            exam_id: examId,
+            creator: currentUser ? currentUser.username : '',
+            role: currentUser ? currentUser.role : ''
+          });
+
+          if (res && res.status === 'success') {
+            Swal.fire('تم الحذف', res.message, 'success');
+            loadFacultyExamsList();
+          } else {
+            Swal.fire('خطأ', res ? res.message : 'تعذر حذف الامتحان', 'error');
+          }
+        }
+      });
+    }
+
+    async function loadFacultyDashboard() {
+      const res = await apiCall({ action: 'get_dashboard' });
+      if (!res || res.status !== 'success' || !res.results) return;
+
+      const tbody = document.getElementById('faculty-results-tbody');
+      tbody.innerHTML = '';
+
+      if (res.results.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">لا توجد نتائج مسجلة حتى الآن</td></tr>`;
+        return;
+      }
+
+      const reversed = [...res.results].reverse();
+      reversed.forEach(row => {
+        const safeDate = escapeHTML(row[0]);
+        const safeCode = escapeHTML(row[1]);
+        const safeName = escapeHTML(row[2]);
+        const safeId = escapeHTML(row[3]);
+        const safeGrade = escapeHTML(row[4] || '-');
+        const safeBranch = escapeHTML(row[5] || '-');
+        const safePass = escapeHTML(row[6] || '-');
+        const safeScore = escapeHTML(row[7]);
+        const safeTotal = escapeHTML(row[8]);
+        const safeStatus = escapeHTML(row[9]);
+
+        const isCheat = String(safeStatus).includes('غش') || String(safeStatus).includes('محظورة') || String(safeStatus).includes('مغادرة');
+
+        tbody.innerHTML += `
+          <tr>
+            <td class="text-slate-500 font-mono text-xs">${safeDate}</td>
+            <td><span class="font-bold text-sky-600">${safeCode}</span></td>
+            <td class="font-semibold text-slate-800">${safeName}</td>
+            <td class="font-mono text-xs">${safeId}</td>
+            <td><span class="badge badge-primary text-[11px]">${safeGrade}</span></td>
+            <td class="text-xs font-semibold text-slate-600">${safeBranch}</td>
+            <td class="font-mono text-xs text-slate-500 bg-slate-50 px-2 py-0.5 rounded">${safePass}</td>
+            <td><span class="font-bold text-slate-900">${safeScore} / ${safeTotal}</span></td>
+            <td>
+              <span class="badge ${isCheat ? 'badge-danger' : 'badge-success'}">
+                <i class="fa-solid ${isCheat ? 'fa-triangle-exclamation' : 'fa-check'}"></i>
+                ${safeStatus}
+              </span>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    function filterFacultyTable() {
+      const query = document.getElementById('filter-faculty-results').value.trim().toUpperCase();
+      const rows = document.querySelectorAll('#faculty-results-tbody tr');
+      rows.forEach(row => {
+        const text = row.innerText.toUpperCase();
+        row.style.display = text.includes(query) ? '' : 'none';
+      });
+    }
+
+    async function confirmClearResults() {
+      Swal.fire({
+        title: 'تأكيد تفريغ نتائج الطلاب',
+        text: 'تأكد أنك قمت بتنزيل ملف الـ Excel أولاً. هل تريد بالتأكيد مسح نتائج الطلاب من الجدول وقاعدة البيانات لبدء اختبار جديد؟',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، قم بالحذف والتفريغ',
+        cancelButtonText: 'إلغاء',
+        confirmButtonColor: '#e11d48',
+        cancelButtonColor: '#64748b'
+      }).then(async (result) => {
+        if (result.isConfirmed) {
+          const filterVal = document.getElementById('filter-faculty-results') ? document.getElementById('filter-faculty-results').value.trim() : '';
+          const res = await apiCall({
+            action: 'clear_results',
+            exam_code: filterVal, // إذا كان كاتب كود في الفلتر يمسح نتائجه فقط، وإذا كان فارغاً يمسح الكل
+            creator: currentUser ? currentUser.username : '',
+            role: currentUser ? currentUser.role : ''
+          });
+
+          if (res && res.status === 'success') {
+            Swal.fire('تم التفريغ بنجاح', res.message, 'success');
+            loadFacultyDashboard();
+          } else {
+            Swal.fire('خطأ', res ? res.message : 'تعذر مسح النتائج', 'error');
+          }
+        }
+      });
+    }
+
+    // ==========================================
+    // نظام المراقبة الحية بالكاميرا للأستاذ
+    // ==========================================
+    let activePeerStreams = {};
+
+    function refreshLiveMonitoringGrid() {
+      // إرسال طلب نبضة للاستعلام عن بث الطلاب
+      Swal.fire({
+        title: 'جاري تحديث شاشات البث المباشر...',
+        timer: 1200,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading()
+      });
+    }
+
+    function requestAllStudentsOpenCam() {
+      // حفظ طلب فتح الكاميرا في السيرفر أو عبر قناة التنبيه المباشر
+      localStorage.setItem('faculty_cam_request_broadcast', Date.now());
+      Swal.fire({
+        title: 'تم إرسال الإشعار!',
+        text: 'تم إرسال إشعار فوري وتنبيه على شاشات جميع الطلاب الممتحنين لفتح الكاميرا للمراقبة المباشرة.',
+        icon: 'success',
+        confirmButtonText: 'حسناً',
+        confirmButtonColor: '#0284c7'
+      });
+    }
+
+    // الاستماع للبث المباشر للطلاب عبر القناة المحلية أو WebRTC Broadcast
+    window.addEventListener('storage', (e) => {
+      if (e.key && e.key.startsWith('student_cam_stream_')) {
+        try {
+          const streamInfo = JSON.parse(e.newValue);
+          updateStudentVideoTile(streamInfo);
+        } catch (err) {}
+      }
+    });
+
+    function updateStudentVideoTile(info) {
+      const grid = document.getElementById('live-monitoring-grid');
+      if (!grid) return;
+
+      // إذا كان العنصر الأولي الفارغ موجوداً يتم تفريغه
+      if (grid.children.length === 1 && grid.children[0].classList.contains('col-span-full')) {
+        grid.innerHTML = '';
+      }
+
+      const tileId = `cam-tile-${info.studentId}`;
+      let tile = document.getElementById(tileId);
+
+      if (!info.active) {
+        if (tile) tile.remove();
+        if (grid.children.length === 0) {
+          grid.innerHTML = `
+            <div class="p-8 text-center text-slate-400 col-span-full border rounded-xl bg-slate-50">
+              <i class="fa-solid fa-users-viewfinder text-3xl mb-2 text-slate-300"></i>
+              <p class="text-xs">لا يوجد طلاب نشطون حالياً في قاعة الاختبار، أو لم يتم فتح كاميراتهم بعد.</p>
+            </div>
+          `;
+        }
+        return;
+      }
+
+      if (!tile) {
+        tile = document.createElement('div');
+        tile.id = tileId;
+        tile.className = 'app-card overflow-hidden bg-slate-900 border border-slate-700 rounded-xl relative animate-fade-in shadow-sm';
+        tile.innerHTML = `
+          <div class="bg-slate-800 text-white p-2 flex justify-between items-center text-xs border-b border-slate-700">
+            <span class="font-bold flex items-center gap-1.5 truncate">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span class="student-name-label truncate">${escapeHTML(info.studentName)}</span>
+            </span>
+            <span class="text-[10px] text-slate-400 font-mono">${escapeHTML(info.examId)}</span>
+          </div>
+          <div class="relative bg-black flex items-center justify-center h-36">
+            <img id="img-${info.studentId}" class="w-full h-full object-cover" src="${info.frame || ''}">
+            <span class="absolute bottom-1 right-2 bg-slate-900/80 text-white px-2 py-0.5 rounded text-[10px] font-mono">ID: ${escapeHTML(info.studentId)}</span>
+          </div>
+          <div class="p-2 bg-slate-800 text-slate-300 flex justify-between items-center text-[11px]">
+            <span>${escapeHTML(info.grade)}</span>
+            <span class="text-emerald-400 font-semibold"><i class="fa-solid fa-video"></i> متصل لايف</span>
+          </div>
+        `;
+        grid.appendChild(tile);
+      } else {
+        const img = document.getElementById(`img-${info.studentId}`);
+        if (img && info.frame) {
+          img.src = info.frame;
+        }
+      }
+    }
+  </script>
+</body>
+</html>
