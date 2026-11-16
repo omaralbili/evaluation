@@ -396,6 +396,9 @@ async function startStudentExam(e) {
   document.getElementById('navbar').classList.add('hidden');
   document.getElementById('exam-room').classList.remove('hidden');
 
+  document.body.classList.add('exam-active-mode');
+  createSecurityWatermark(name, id);
+
   isExamActive = true;
   startTimer(res.exam.duration * 60);
   updateProgressBar();
@@ -540,6 +543,8 @@ async function submitExam(statusReason) {
     camAlertCheckInterval = null;
   }
   disableScreenCaptureProtection();
+  document.body.classList.remove('exam-active-mode');
+  removeSecurityWatermark();
 
   const answers = {};
   if (currentExam && currentExam.questions) {
@@ -725,39 +730,106 @@ document.addEventListener('keydown', e => {
   }
 });
 
-document.addEventListener('visibilitychange', () => {
-  if (isExamActive && document.hidden) {
-    if (isActivatingCamera) return;
-    triggerBlackout('مغادرة نافذة الامتحان أو فتح تبويب آخر');
+// ==========================================
+// 3.1 نظام الحماية المتقدمة والمطلقة ضد تسجيل ولقطات الشاشة (Screen Capture & Recording Prevention)
+// ==========================================
+
+let screenProtectionActive = false;
+let blackoutOverlay = null;
+let isBlackoutActive = false;
+
+// إظهار شاشة سوداء كاملة فورية وتفريغ عناصر الامتحان من العرض
+function showPersistentBlackout(reason) {
+  if (!isExamActive || isActivatingCamera) return;
+  isBlackoutActive = true;
+
+  if (!blackoutOverlay) {
+    createBlackoutOverlayDOM();
+  }
+
+  if (blackoutOverlay) {
+    blackoutOverlay.classList.remove('hidden');
+  }
+
+  const examRoom = document.getElementById('exam-room');
+  if (examRoom) {
+    examRoom.style.visibility = 'hidden';
+    examRoom.style.opacity = '0';
+  }
+
+  const questionsContainer = document.getElementById('questions-container');
+  if (questionsContainer) {
+    questionsContainer.style.display = 'none';
+  }
+}
+
+// استعادة الشاشة فقط بعد أن يعود الطالب للنافذة ويقر بالتحذير
+function handleReturnFromBlur(reason) {
+  if (!isExamActive || isActivatingCamera || !isBlackoutActive) return;
+
+  handleViolation(reason || 'مغادرة نافذة الامتحان أو محاولة تسجيل/تصوير الشاشة');
+
+  // استعادة العرض
+  removeBlackout();
+}
+
+function removeBlackout() {
+  isBlackoutActive = false;
+  if (blackoutOverlay) {
+    blackoutOverlay.classList.add('hidden');
+  }
+  const examRoom = document.getElementById('exam-room');
+  if (examRoom) {
+    examRoom.style.visibility = 'visible';
+    examRoom.style.opacity = '1';
+  }
+  const questionsContainer = document.getElementById('questions-container');
+  if (questionsContainer) {
+    questionsContainer.style.display = 'block';
+  }
+}
+
+function triggerBlackout(reason) {
+  showPersistentBlackout(reason);
+  setTimeout(() => {
+    if (isExamActive && !document.hidden && document.hasFocus && document.hasFocus()) {
+      handleReturnFromBlur(reason);
+    }
+  }, 1600);
+}
+
+// 1. مراقبة مغادرة الصفحة أو سحب شريط الإشعارات/الاختصارات في الموبايل
+window.addEventListener('blur', () => {
+  if (isExamActive && !isActivatingCamera) {
+    showPersistentBlackout('فقدان التركيز على شاشة الامتحان أو محاولة تسجيل الشاشة');
   }
 });
 
-window.addEventListener('blur', () => {
-  if (isExamActive) {
-    if (isActivatingCamera) return;
-    // عند فقدان التركيز (مثل محاولة تشغيل برنامج تسجيل شاشة خارجي أو أداة تصوير) نقوم بتعتيم الشاشة فوراً
-    triggerBlackout('فقدان التركيز على صفحة الامتحان أو تشغيل أداة خارجية');
+window.addEventListener('focus', () => {
+  if (isExamActive && isBlackoutActive && !isActivatingCamera) {
+    handleReturnFromBlur('العودة بعد مغادرة نافذة الامتحان');
+  }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (isExamActive && !isActivatingCamera) {
+    if (document.hidden) {
+      showPersistentBlackout('مغادرة نافذة الامتحان أو التبديل لتطبيق آخر');
+    } else if (isBlackoutActive) {
+      handleReturnFromBlur('العودة بعد مغادرة نافذة الامتحان');
+    }
   }
 });
 
 document.addEventListener('fullscreenchange', () => {
   if (isExamActive && !document.fullscreenElement) {
     if (isActivatingCamera) return;
-    handleViolation('الخروج من وضع ملء الشاشة');
+    showPersistentBlackout('الخروج من وضع ملء الشاشة');
+    handleReturnFromBlur('الخروج من وضع ملء الشاشة');
   }
 });
 
-// ==========================================
-// 3.1 نظام الحماية المتقدمة ضد لقطات وتسجيل الشاشة (Screen Capture & Recording Prevention)
-// ==========================================
-
-let screenProtectionActive = false;
-let blackoutOverlay = null;
-
-function enableScreenCaptureProtection() {
-  screenProtectionActive = true;
-
-  // إنشاء طبقة الشاشة السوداء في الـ DOM إذا لم تكن موجودة
+function createBlackoutOverlayDOM() {
   if (!blackoutOverlay) {
     blackoutOverlay = document.createElement('div');
     blackoutOverlay.id = 'exam-blackout-overlay';
@@ -771,8 +843,14 @@ function enableScreenCaptureProtection() {
     `;
     document.body.appendChild(blackoutOverlay);
   }
+}
 
-  // 1. مراقبة استدعاء مشاركة أو تسجيل الشاشة من خلال المتصفح (getDisplayMedia)
+// تفعيل كل حمايات تسجيل ولقطات الشاشة ومنع أي إجراءات غير مصرح بها
+function enableScreenCaptureProtection() {
+  screenProtectionActive = true;
+  createBlackoutOverlayDOM();
+
+  // 1. حظر واجهات تسجيل ومشاركة الشاشة للمتصفح
   if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
     navigator.mediaDevices.getDisplayMedia = function () {
       triggerBlackout('تم حظر تسجيل ومشاركة الشاشة');
@@ -780,7 +858,7 @@ function enableScreenCaptureProtection() {
     };
   }
 
-  // 2. تعتيم فوري عند الضغط على زر PrintScreen أو اختصارات لقطة الشاشة (Win+Shift+S / Cmd+Shift+3,4 / Snipping Tool)
+  // 2. تعتيم فوري عند الضغط على مفاتيح لقطة الشاشة
   window.addEventListener('keyup', handleScreenCaptureKeys, true);
   window.addEventListener('keydown', handleScreenCaptureKeys, true);
 
@@ -791,6 +869,13 @@ function enableScreenCaptureProtection() {
   // 4. حظر النسخ والقص وتفريغ الحافظة
   document.addEventListener('copy', handleClipboardBlock, true);
   document.addEventListener('cut', handleClipboardBlock, true);
+
+  // 5. حظر اللمس المتعدد على الهواتف (إيماءات الـ 3 أصابع وإصبعين للقطة الشاشة والتكبير)
+  window.addEventListener('touchstart', handleMobileTouchRestrictions, { passive: false });
+  window.addEventListener('touchmove', handleMobileTouchMove, { passive: false });
+
+  // 6. حظر أي نقرات غير مصرح بها (منع التحديد، القوائم المنبثقة، الضغط المطول)
+  document.addEventListener('click', handleExamScreenStrictClick, true);
 }
 
 function disableScreenCaptureProtection() {
@@ -802,6 +887,54 @@ function disableScreenCaptureProtection() {
   window.removeEventListener('afterprint', handleAfterPrint);
   document.removeEventListener('copy', handleClipboardBlock, true);
   document.removeEventListener('cut', handleClipboardBlock, true);
+  window.removeEventListener('touchstart', handleMobileTouchRestrictions, { passive: false });
+  window.removeEventListener('touchmove', handleMobileTouchMove, { passive: false });
+  document.removeEventListener('click', handleExamScreenStrictClick, true);
+}
+
+// حظر إيماءات اللمس المتعدد في الموبايل فوراً
+function handleMobileTouchRestrictions(e) {
+  if (!isExamActive) return;
+
+  // إذا تم اللمس بأكثر من إصبع واحد (3 أصابع للقطة الشاشة أو إصبعين للتكبير)
+  if (e.touches && e.touches.length > 1) {
+    e.preventDefault();
+    e.stopPropagation();
+    showPersistentBlackout('تم حظر لمس متعدد محظور (إيماءة لقطة شاشة)');
+    setTimeout(() => {
+      handleReturnFromBlur('محاولة أخذ لقطة شاشة عبر اللمس المتعدد');
+    }, 1000);
+    return false;
+  }
+}
+
+function handleMobileTouchMove(e) {
+  if (!isExamActive) return;
+  if (e.touches && e.touches.length > 1) {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  }
+}
+
+// تقييد النقرات والتفاعل: يُسمح فقط باختيار الإجابة، أو فتح الكاميرا، أو تسليم الاختبار
+function handleExamScreenStrictClick(e) {
+  if (!isExamActive) return;
+
+  const target = e.target;
+  const isAllowed = target.closest('.option-label') ||
+                    target.closest('.option-radio') ||
+                    target.closest('input[type="radio"]') ||
+                    target.closest('#student-camera-btn') ||
+                    target.closest('#student-cam-preview-box') ||
+                    target.closest('button[onclick*="Exit"]') ||
+                    target.closest('button[onclick*="Submit"]') ||
+                    target.closest('.swal2-container');
+
+  if (!isAllowed) {
+    // منع استدعاء أي إجراءات إضافية على الشاشة
+    e.stopPropagation();
+  }
 }
 
 function handleClipboardBlock(e) {
@@ -835,7 +968,7 @@ function handleScreenCaptureKeys(e) {
     e.stopPropagation();
 
     // تشغيل الشاشة السوداء فوراً
-    triggerBlackout('تم حظر محاولة أخذ لقطة شاشة أو تسجيل الشاشة');
+    showPersistentBlackout('تم حظر محاولة أخذ لقطة شاشة أو تسجيل الشاشة');
 
     // مسح الحافظة Clipboard لمنع حفظ الصورة
     try {
@@ -843,39 +976,46 @@ function handleScreenCaptureKeys(e) {
         navigator.clipboard.writeText('');
       }
     } catch (err) {}
+
+    setTimeout(() => {
+      handleReturnFromBlur('محاولة أخذ لقطة شاشة');
+    }, 1200);
+
     return false;
   }
 }
 
-function triggerBlackout(reason) {
-  if (blackoutOverlay) {
-    blackoutOverlay.classList.remove('hidden');
-    // إخفاء قاعة الامتحان خلف السواد
-    const examRoom = document.getElementById('exam-room');
-    if (examRoom) {
-      examRoom.style.visibility = 'hidden';
-      examRoom.style.filter = 'blur(30px)';
-    }
-
-    // إعادة الشاشة بعد ثانيتين مع تسجيل تحذير أمني
-    setTimeout(() => {
-      removeBlackout();
-      if (reason && isExamActive) {
-        handleViolation(reason);
-      }
-    }, 1800);
+function handleBeforePrint() {
+  if (isExamActive) {
+    showPersistentBlackout('محاولة طباعة أو تصوير الشاشة');
   }
 }
 
-function removeBlackout() {
-  if (blackoutOverlay) {
-    blackoutOverlay.classList.add('hidden');
-    const examRoom = document.getElementById('exam-room');
-    if (examRoom) {
-      examRoom.style.visibility = 'visible';
-      examRoom.style.filter = 'none';
-    }
+function handleAfterPrint() {
+  if (isExamActive) {
+    handleReturnFromBlur('محاولة طباعة أو تصوير الشاشة');
   }
+}
+
+// علامة مائية أمنية متكررة باسم ورقم الطالب على كامل صفحة الأسئلة
+function createSecurityWatermark(name, id) {
+  removeSecurityWatermark();
+  const wm = document.createElement('div');
+  wm.id = 'exam-security-watermark';
+  wm.className = 'exam-security-watermark';
+  const text = `الطالب: ${escapeHTML(name)} | ID: ${escapeHTML(id)} | اختبار محمي`;
+  let items = '';
+  for (let i = 0; i < 28; i++) {
+    items += `<div class="watermark-item">${text}</div>`;
+  }
+  wm.innerHTML = items;
+  const examRoom = document.getElementById('exam-room');
+  if (examRoom) examRoom.appendChild(wm);
+}
+
+function removeSecurityWatermark() {
+  const wm = document.getElementById('exam-security-watermark');
+  if (wm) wm.remove();
 }
 
 function handleBeforePrint() {

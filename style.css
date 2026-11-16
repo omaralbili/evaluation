@@ -374,25 +374,68 @@ body {
    Screen Recording & Screenshot Protection
    ========================================== */
 .screen-blackout-overlay {
-  position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
   background-color: #000000 !important;
-  color: #ffffff;
-  z-index: 99999999 !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 1.5rem;
+  color: #ffffff !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  padding: 1.5rem !important;
   user-select: none !important;
   -webkit-user-select: none !important;
-  pointer-events: all;
+  pointer-events: all !important;
 }
 
 .screen-blackout-overlay.hidden {
   display: none !important;
+}
+
+/* علامة مائية أمنية ذكية في خلفية أسئلة الامتحان */
+.exam-security-watermark {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: space-around;
+  justify-content: space-around;
+  opacity: 0.07;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  overflow: hidden;
+}
+
+.watermark-item {
+  transform: rotate(-25deg);
+  font-size: 13px;
+  font-weight: 800;
+  color: #e11d48;
+  white-space: nowrap;
+  padding: 2.5rem;
+  letter-spacing: 1px;
+}
+
+/* إغلاق كامل لأي إيماءات أو لمس غير مصرح به في الامتحان */
+body.exam-active-mode {
+  touch-action: pan-y !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  overscroll-behavior-y: none !important;
+}
+
+#exam-room {
+  touch-action: pan-y !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-tap-highlight-color: transparent !important;
 }
 
 /* حماية الطباعة ولقطات الشاشة عبر أوامر النظام */
