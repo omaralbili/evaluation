@@ -668,6 +668,121 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 // ==========================================
+// 3.1 نظام الحماية المتقدمة ضد لقطات وتسجيل الشاشة (Screen Capture & Recording Prevention)
+// ==========================================
+
+let screenProtectionActive = false;
+let blackoutOverlay = null;
+
+function enableScreenCaptureProtection() {
+  screenProtectionActive = true;
+
+  // إنشاء طبقة الشاشة السوداء في الـ DOM إذا لم تكن موجودة
+  if (!blackoutOverlay) {
+    blackoutOverlay = document.createElement('div');
+    blackoutOverlay.id = 'exam-blackout-overlay';
+    blackoutOverlay.className = 'screen-blackout-overlay hidden';
+    blackoutOverlay.innerHTML = `
+      <div class="space-y-3">
+        <i class="fa-solid fa-eye-slash text-5xl text-rose-500 mb-2"></i>
+        <h2 class="text-xl font-bold">تم تعتيم الشاشة - تسجيل أو لقطة الشاشة محظورة</h2>
+        <p class="text-xs text-slate-300">يُمنع منعاً باتاً تسجيل أو التقاط صورة لصفحة الامتحان حفاظاً على السرية.</p>
+      </div>
+    `;
+    document.body.appendChild(blackoutOverlay);
+  }
+
+  // 1. مراقبة استدعاء مشاركة أو تسجيل الشاشة من خلال المتصفح (getDisplayMedia)
+  if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+    const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getDisplayMedia = function () {
+      triggerBlackout('تم حظر تسجيل ومشاركة الشاشة');
+      return Promise.reject(new DOMException('Screen recording is restricted during exam', 'NotAllowedError'));
+    };
+  }
+
+  // 2. تعتيم فوري عند الضغط على زر PrintScreen أو اختصارات لقطة الشاشة (Win+Shift+S / Cmd+Shift+3,4 / Snipping Tool)
+  window.addEventListener('keyup', handleScreenCaptureKeys, true);
+  window.addEventListener('keydown', handleScreenCaptureKeys, true);
+
+  // 3. منع لقطات الشاشة عبر نافذة الطباعة (Ctrl+P / Command+P)
+  window.addEventListener('beforeprint', handleBeforePrint);
+  window.addEventListener('afterprint', handleAfterPrint);
+}
+
+function disableScreenCaptureProtection() {
+  screenProtectionActive = false;
+  removeBlackout();
+  window.removeEventListener('keyup', handleScreenCaptureKeys, true);
+  window.removeEventListener('keydown', handleScreenCaptureKeys, true);
+  window.removeEventListener('beforeprint', handleBeforePrint);
+  window.removeEventListener('afterprint', handleAfterPrint);
+}
+
+function handleScreenCaptureKeys(e) {
+  if (!isExamActive || !screenProtectionActive) return;
+
+  const key = e.key ? e.key.toLowerCase() : '';
+  const code = e.code ? e.code.toLowerCase() : '';
+  const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+
+  // فحص أزرار لقطات الشاشة الشهيرة
+  if (
+    key === 'printscreen' ||
+    code === 'printscreen' ||
+    (isCtrlOrMeta && (key === 'p' || key === 's')) ||
+    (e.metaKey && e.shiftKey && (key === '3' || key === '4' || key === '5')) || // Mac Screenshot
+    (e.key === 'Meta' && e.shiftKey && key === 's') // Windows Snipping Tool (Win+Shift+S)
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // تشغيل الشاشة السوداء فوراً
+    triggerBlackout('تم حظر محاولة أخذ لقطة شاشة');
+
+    // مسح الحافظة Clipboard لمنع لصق الصورة إذا التقطها نظام التشغيل
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText('');
+      }
+    } catch (err) {}
+  }
+}
+
+function triggerBlackout(reason) {
+  if (blackoutOverlay) {
+    blackoutOverlay.classList.remove('hidden');
+    // إخفاء قاعة الامتحان خلف السواد
+    const examRoom = document.getElementById('exam-room');
+    if (examRoom) examRoom.style.visibility = 'hidden';
+
+    // إعادة الشاشة بعد ثانيتين مع تسجيل تحذير أمني
+    setTimeout(() => {
+      removeBlackout();
+      handleViolation(reason);
+    }, 1800);
+  }
+}
+
+function removeBlackout() {
+  if (blackoutOverlay) {
+    blackoutOverlay.classList.add('hidden');
+    const examRoom = document.getElementById('exam-room');
+    if (examRoom) examRoom.style.visibility = 'visible';
+  }
+}
+
+function handleBeforePrint() {
+  if (isExamActive) {
+    triggerBlackout('محاولة طباعة أو تصوير الشاشة');
+  }
+}
+
+function handleAfterPrint() {
+  removeBlackout();
+}
+
+// ==========================================
 // 4. لوحة الإدارة العامة (Admin Dashboard & Regex)
 // ==========================================
 

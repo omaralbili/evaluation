@@ -583,30 +583,123 @@
     }
 
     // ==========================================
-    // نظام المراقبة الحية بالكاميرا للأستاذ
+    // نظام المراقبة الحية بالكاميرا للأستاذ (Cloud-Powered Live Proctored Grid)
     // ==========================================
     let activePeerStreams = {};
+    let cloudMonitoringInterval = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // بدء الاستعلام السحابي التلقائي عن كاميرات الطلاب كل 3.5 ثانية
+      startCloudLiveMonitoring();
+    });
+
+    function startCloudLiveMonitoring() {
+      if (cloudMonitoringInterval) clearInterval(cloudMonitoringInterval);
+      // فحص أولي فوري ثم تكرار دوري
+      fetchCloudCamFrames();
+      cloudMonitoringInterval = setInterval(fetchCloudCamFrames, 3500);
+    }
+
+    async function fetchCloudCamFrames() {
+      const workspace = document.getElementById('faculty-workspace');
+      if (!workspace || workspace.classList.contains('hidden')) return;
+
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'get_cam_frames' })
+        });
+        const data = await res.json();
+        if (data && data.status === 'success' && data.streams) {
+          renderCloudVideoGrid(data.streams);
+        }
+      } catch (err) {}
+    }
+
+    function renderCloudVideoGrid(streams) {
+      const grid = document.getElementById('live-monitoring-grid');
+      if (!grid) return;
+
+      if (!streams || streams.length === 0) {
+        grid.innerHTML = `
+          <div class="p-8 text-center text-slate-400 col-span-full border rounded-xl bg-slate-50">
+            <i class="fa-solid fa-users-viewfinder text-3xl mb-2 text-slate-300"></i>
+            <p class="text-xs">لا يوجد طلاب نشطون حالياً في قاعة الاختبار، أو لم يتم فتح كاميراتهم بعد.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // إزالة رسالة لا يوجد طلاب إذا وجدت
+      if (grid.children.length === 1 && grid.children[0].classList.contains('col-span-full')) {
+        grid.innerHTML = '';
+      }
+
+      // قائمة الطلاب المتاحين حالياً
+      const activeIds = streams.map(s => String(s.studentId));
+
+      // إزالة الشاشات للطلاب الذين غادروا
+      Array.from(grid.children).forEach(child => {
+        const cId = child.id.replace('cam-tile-', '');
+        if (!activeIds.includes(cId)) {
+          child.remove();
+        }
+      });
+
+      streams.forEach(info => {
+        updateStudentVideoTile({
+          studentId: info.studentId,
+          studentName: info.studentName,
+          grade: info.grade,
+          examId: info.examId,
+          frame: info.frame,
+          active: true
+        });
+      });
+    }
 
     function refreshLiveMonitoringGrid() {
-      // إرسال طلب نبضة للاستعلام عن بث الطلاب
+      fetchCloudCamFrames();
       Swal.fire({
         title: 'جاري تحديث شاشات البث المباشر...',
-        timer: 1200,
+        timer: 1000,
         showConfirmButton: false,
         didOpen: () => Swal.showLoading()
       });
     }
 
-    function requestAllStudentsOpenCam() {
-      // حفظ طلب فتح الكاميرا في السيرفر أو عبر قناة التنبيه المباشر
-      localStorage.setItem('faculty_cam_request_broadcast', Date.now());
-      Swal.fire({
-        title: 'تم إرسال الإشعار!',
-        text: 'تم إرسال إشعار فوري وتنبيه على شاشات جميع الطلاب الممتحنين لفتح الكاميرا للمراقبة المباشرة.',
-        icon: 'success',
-        confirmButtonText: 'حسناً',
-        confirmButtonColor: '#0284c7'
-      });
+    async function requestAllStudentsOpenCam() {
+      // 1. إرسال تنبيه سحابي إلى قاعدة البيانات ليصل لجميع الطلاب في أي مكان على Vercel أو أجهزة مختلفة
+      try {
+        Swal.fire({
+          title: 'جاري إرسال الإشعار لجميع الطلاب...',
+          allowOutsideClick: false,
+          didOpen: () => Swal.showLoading()
+        });
+
+        await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'send_cam_alert',
+            exam_id: 'ALL'
+          })
+        });
+
+        // 2. إرسال تنبيه محلي احتياطي
+        localStorage.setItem('faculty_cam_request_broadcast', Date.now());
+
+        Swal.fire({
+          title: 'تم إرسال الإشعار!',
+          text: 'تم إرسال إشعار فوري وتنبيه على شاشات جميع الطلاب الممتحنين لفتح الكاميرا للمراقبة المباشرة.',
+          icon: 'success',
+          confirmButtonText: 'حسناً',
+          confirmButtonColor: '#0284c7'
+        });
+      } catch (e) {
+        Swal.fire('خطأ', 'تعذر إرسال الإشعار، يرجى التحقق من اتصال الإنترنت', 'error');
+      }
     }
 
     // الاستماع للبث المباشر للطلاب عبر القناة المحلية أو WebRTC Broadcast

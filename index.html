@@ -118,32 +118,32 @@
     <!-- 2. قاعة الاختبار المؤمنة بالكامل -->
     <section id="exam-room" class="hidden fixed inset-0 bg-slate-50 z-50 overflow-y-auto no-select flex flex-col">
       <div class="sticky top-0 bg-white border-b border-slate-200 z-30">
-        <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div>
-            <h3 id="exam-title-display" class="font-bold text-base md:text-lg text-slate-900 leading-tight">عنوان الامتحان</h3>
-            <span id="student-info-display" class="text-xs text-slate-500 font-medium"></span>
+        <div class="max-w-4xl mx-auto px-3 md:px-4 py-2.5 md:py-3 flex flex-wrap justify-between items-center gap-2">
+          <div class="flex-1 min-w-[180px]">
+            <h3 id="exam-title-display" class="font-bold text-sm md:text-lg text-slate-900 leading-tight truncate">عنوان الامتحان</h3>
+            <span id="student-info-display" class="text-[11px] md:text-xs text-slate-500 font-medium block truncate"></span>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex items-center flex-wrap gap-2">
             <!-- زر الكاميرا للطالب للتحكم في البث المباشر والمراقبة -->
-            <button id="student-camera-btn" onclick="toggleStudentCamera()" class="btn btn-outline text-xs font-bold px-3 py-1.5 text-slate-700">
+            <button id="student-camera-btn" onclick="toggleStudentCamera()" class="btn btn-outline text-xs font-bold px-2.5 py-1.5 text-slate-700">
               <i id="student-camera-icon" class="fa-solid fa-video-slash text-slate-400"></i>
-              <span id="student-camera-label">تشغيل الكاميرا</span>
+              <span id="student-camera-label" class="hidden sm:inline">تشغيل الكاميرا</span>
             </button>
             <div id="timer-chip-container" class="timer-chip">
               <i class="fa-regular fa-clock text-slate-400"></i>
               <span id="timer-display">00:00</span>
             </div>
-            <button onclick="confirmExitAndSubmit()" class="btn btn-danger text-xs font-bold px-4 py-2">
-              <i class="fa-solid fa-arrow-right-from-bracket"></i> حفظ الإجابات والخروج
+            <button onclick="confirmExitAndSubmit()" class="btn btn-danger text-xs font-bold px-3 py-1.5">
+              <i class="fa-solid fa-arrow-right-from-bracket"></i> <span class="hidden sm:inline">حفظ الإجابات و</span>خروج
             </button>
           </div>
         </div>
         <div class="exam-progress-bar">
           <div id="exam-progress-fill" class="exam-progress-fill" style="width: 0%;"></div>
         </div>
-        <div class="max-w-4xl mx-auto px-4 py-1 flex justify-between text-[11px] text-slate-500 font-semibold">
+        <div class="max-w-4xl mx-auto px-3 md:px-4 py-1 flex justify-between text-[10px] md:text-[11px] text-slate-500 font-semibold">
           <span id="exam-progress-text">تمت الإجابة: 0</span>
-          <span><i class="fa-solid fa-shield-cat text-emerald-600"></i> وضع الحماية وملء الشاشة نشط</span>
+          <span><i class="fa-solid fa-shield-cat text-emerald-600"></i> مراقبة وحماية نشطة</span>
         </div>
       </div>
 
