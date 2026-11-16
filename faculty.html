@@ -282,9 +282,14 @@
       }
       loadFacultyExamsList();
       loadFacultyDashboard();
+      startCloudLiveMonitoring();
     }
 
     function facultyLogout() {
+      if (cloudMonitoringInterval) {
+        clearInterval(cloudMonitoringInterval);
+        cloudMonitoringInterval = null;
+      }
       currentUser = null;
       sessionStorage.removeItem('faculty_user');
       document.getElementById('faculty-workspace').classList.add('hidden');

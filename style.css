@@ -368,3 +368,101 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.65; }
 }
+
+/* ==========================================
+   طبقة الحماية وتعتيم الشاشة ضد التسجيل ولقطات الشاشة
+   Screen Recording & Screenshot Protection
+   ========================================== */
+.screen-blackout-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #000000 !important;
+  color: #ffffff;
+  z-index: 99999999 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.5rem;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  pointer-events: all;
+}
+
+.screen-blackout-overlay.hidden {
+  display: none !important;
+}
+
+/* حماية الطباعة ولقطات الشاشة عبر أوامر النظام */
+@media print {
+  html, body {
+    display: none !important;
+    visibility: hidden !important;
+    background: #000000 !important;
+  }
+}
+
+/* ==========================================
+   التجاوب الشامل مع شاشات الهواتف والأجهزة اللوحية
+   Mobile-First & Responsive Enhancements
+   ========================================== */
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+
+  .nav-header .max-w-6xl {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .nav-header .flex.items-center.gap-2 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+    width: 100%;
+  }
+
+  .nav-header .btn {
+    padding: 0.45rem 0.5rem;
+    font-size: 0.72rem;
+    justify-content: center;
+  }
+
+  .app-card {
+    border-radius: var(--radius-lg);
+    padding: 1.1rem !important;
+  }
+
+  .question-card {
+    padding: 1.1rem !important;
+  }
+
+  .option-label {
+    padding: 0.75rem 0.9rem;
+    font-size: 0.88rem;
+  }
+
+  .clean-table th, .clean-table td {
+    padding: 0.65rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .timer-chip {
+    font-size: 0.88rem;
+    padding: 0.3rem 0.6rem;
+  }
+
+  #student-cam-preview-box {
+    width: 140px;
+    bottom: 0.75rem;
+    left: 0.75rem;
+  }
+
+  #student-cam-preview-box video {
+    height: 100px;
+  }
+}

@@ -131,22 +131,52 @@ function onGradeChange() {
 
 let studentMediaStream = null;
 let cameraBroadcastInterval = null;
+let camAlertCheckInterval = null;
+let isActivatingCamera = false; // لمنع اعتبار طلب إذن الكاميرا محاولة غش
+let lastCamAlertTimestamp = Date.now();
 
-// مراقبة إشعارات الأستاذ لطلب فتح الكاميرا
+// فحص دوري سحابي لاستقبال إشعارات وتنبيهات الأستاذ لفتح الكاميرا
+function startCamAlertPolling() {
+  if (camAlertCheckInterval) clearInterval(camAlertCheckInterval);
+  camAlertCheckInterval = setInterval(async () => {
+    if (!isExamActive || studentMediaStream || isActivatingCamera) return;
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'check_cam_alert',
+          last_checked: lastCamAlertTimestamp
+        })
+      });
+      const data = await res.json();
+      if (data && data.has_alert) {
+        lastCamAlertTimestamp = data.timestamp;
+        showFacultyCamRequestAlert();
+      }
+    } catch (err) {}
+  }, 3500);
+}
+
+function showFacultyCamRequestAlert() {
+  if (studentMediaStream || isActivatingCamera) return;
+  isActivatingCamera = true;
+  Swal.fire({
+    title: 'تنبيه أمني من أستاذ المادة!',
+    text: 'طلب مراقب الاختبار تفعيل الكاميرا الآن للمراقبة الحية المباشرة. يرجى الضغط على زر تفعيل الكاميرا لمتابعة الاختبار.',
+    icon: 'warning',
+    confirmButtonText: 'تفعيل الكاميرا الآن',
+    confirmButtonColor: '#059669',
+    allowOutsideClick: false
+  }).then(() => {
+    toggleStudentCamera();
+  });
+}
+
+// دعم التنبيه المحلي السريع أيضاً
 window.addEventListener('storage', (e) => {
   if (e.key === 'faculty_cam_request_broadcast' && isExamActive) {
-    if (!studentMediaStream) {
-      Swal.fire({
-        title: 'تنبيه أمني من أستاذ المادة!',
-        text: 'طلب مراقب الاختبار تفعيل الكاميرا الآن للمراقبة الحية المباشرة. يرجى الضغط على تفعيل ومتابعة الحل.',
-        icon: 'warning',
-        confirmButtonText: 'تفعيل الكاميرا الآن',
-        confirmButtonColor: '#059669',
-        allowOutsideClick: false
-      }).then(() => {
-        toggleStudentCamera();
-      });
-    }
+    showFacultyCamRequestAlert();
   }
 });
 
@@ -169,7 +199,9 @@ async function toggleStudentCamera() {
     return;
   }
 
-  // تشغيل الكاميرا
+  // وضع مؤشر تفعيل الكاميرا لتجميد كشف الغش مؤقتاً أثناء ظهور نافذة إذن المتصفح
+  isActivatingCamera = true;
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' },
@@ -192,16 +224,28 @@ async function toggleStudentCamera() {
     if (label) label.innerText = 'إيقاف الكاميرا';
     if (previewBox) previewBox.classList.remove('hidden');
 
-    // بدء بث اللقطات الحية للأستاذ كل ثانيتين بصيغة خفيفة وسريعة WebRTC/Canvas Snapshots
+    // إعادة الشاشة لوضع ملء الشاشة إذا ألغاه إذن المتصفح
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (e) {}
+
+    // بدء بث اللقطات الحية للأستاذ سحابياً ومحلياً
     startCameraBroadcast();
 
   } catch (err) {
     Swal.fire({
       title: 'تعذر الوصول للكاميرا',
-      text: 'يرجى السماح بصلاحية الكاميرا من إعدادات المتصفح للمراقبة المباشرة.',
+      text: 'يرجى السماح بصلاحية الكاميرا من إعدادات المتصفح لمتابعة المراقبة المباشرة.',
       icon: 'warning',
       confirmButtonText: 'حسناً'
     });
+  } finally {
+    // إتاحة ثوانٍ للتأقلم ثم إعادة تفعيل كواشف الغش
+    setTimeout(() => {
+      isActivatingCamera = false;
+    }, 1500);
   }
 }
 
@@ -213,12 +257,12 @@ function startCameraBroadcast() {
   canvas.height = 180;
   const videoEl = document.getElementById('student-video-element');
 
-  cameraBroadcastInterval = setInterval(() => {
+  cameraBroadcastInterval = setInterval(async () => {
     if (!studentMediaStream || !videoEl || videoEl.readyState < 2) return;
 
     try {
       ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-      const frameData = canvas.toDataURL('image/jpeg', 0.45); // جودة خفيفة وسريعة للشبكة
+      const frameData = canvas.toDataURL('image/jpeg', 0.4);
 
       const streamPayload = {
         studentId: currentExam ? currentExam.student_id : 'guest',
@@ -230,10 +274,26 @@ function startCameraBroadcast() {
         timestamp: Date.now()
       };
 
-      // بث الإشارة للأستاذ
+      // بث محلي
       localStorage.setItem(`student_cam_stream_${streamPayload.studentId}`, JSON.stringify(streamPayload));
+
+      // بث سحابي عبر Google Apps Script لقاعة مراقبة الأستاذ
+      fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'push_cam_frame',
+          student_id: streamPayload.studentId,
+          student_name: streamPayload.studentName,
+          exam_id: streamPayload.examId,
+          grade: streamPayload.grade,
+          frame: frameData,
+          active: true
+        })
+      }).catch(() => {});
+
     } catch (e) {}
-  }, 1800);
+  }, 2500);
 }
 
 function stopStudentCamera() {
@@ -247,6 +307,15 @@ function stopStudentCamera() {
   }
   if (currentExam) {
     localStorage.setItem(`student_cam_stream_${currentExam.student_id}`, JSON.stringify({ active: false }));
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'push_cam_frame',
+        student_id: currentExam.student_id,
+        active: false
+      })
+    }).catch(() => {});
   }
 }
 
@@ -330,6 +399,8 @@ async function startStudentExam(e) {
   isExamActive = true;
   startTimer(res.exam.duration * 60);
   updateProgressBar();
+  startCamAlertPolling();
+  enableScreenCaptureProtection();
 }
 
 function renderQuestions(questions) {
@@ -464,6 +535,11 @@ async function submitExam(statusReason) {
   if (!isExamActive) return;
   isExamActive = false;
   clearInterval(examTimer);
+  if (camAlertCheckInterval) {
+    clearInterval(camAlertCheckInterval);
+    camAlertCheckInterval = null;
+  }
+  disableScreenCaptureProtection();
 
   const answers = {};
   if (currentExam && currentExam.questions) {
@@ -651,18 +727,22 @@ document.addEventListener('keydown', e => {
 
 document.addEventListener('visibilitychange', () => {
   if (isExamActive && document.hidden) {
-    handleViolation('مغادرة نافذة الامتحان أو فتح تبويب آخر');
+    if (isActivatingCamera) return;
+    triggerBlackout('مغادرة نافذة الامتحان أو فتح تبويب آخر');
   }
 });
 
 window.addEventListener('blur', () => {
   if (isExamActive) {
-    handleViolation('فقدان التركيز على صفحة الامتحان');
+    if (isActivatingCamera) return;
+    // عند فقدان التركيز (مثل محاولة تشغيل برنامج تسجيل شاشة خارجي أو أداة تصوير) نقوم بتعتيم الشاشة فوراً
+    triggerBlackout('فقدان التركيز على صفحة الامتحان أو تشغيل أداة خارجية');
   }
 });
 
 document.addEventListener('fullscreenchange', () => {
   if (isExamActive && !document.fullscreenElement) {
+    if (isActivatingCamera) return;
     handleViolation('الخروج من وضع ملء الشاشة');
   }
 });
@@ -686,7 +766,7 @@ function enableScreenCaptureProtection() {
       <div class="space-y-3">
         <i class="fa-solid fa-eye-slash text-5xl text-rose-500 mb-2"></i>
         <h2 class="text-xl font-bold">تم تعتيم الشاشة - تسجيل أو لقطة الشاشة محظورة</h2>
-        <p class="text-xs text-slate-300">يُمنع منعاً باتاً تسجيل أو التقاط صورة لصفحة الامتحان حفاظاً على السرية.</p>
+        <p class="text-xs text-slate-300">يُمنع منعاً باتاً تسجيل أو التقاط صورة لصفحة الامتحان حفاظاً على السرية والنزاهة.</p>
       </div>
     `;
     document.body.appendChild(blackoutOverlay);
@@ -694,7 +774,6 @@ function enableScreenCaptureProtection() {
 
   // 1. مراقبة استدعاء مشاركة أو تسجيل الشاشة من خلال المتصفح (getDisplayMedia)
   if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-    const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getDisplayMedia = function () {
       triggerBlackout('تم حظر تسجيل ومشاركة الشاشة');
       return Promise.reject(new DOMException('Screen recording is restricted during exam', 'NotAllowedError'));
@@ -708,6 +787,10 @@ function enableScreenCaptureProtection() {
   // 3. منع لقطات الشاشة عبر نافذة الطباعة (Ctrl+P / Command+P)
   window.addEventListener('beforeprint', handleBeforePrint);
   window.addEventListener('afterprint', handleAfterPrint);
+
+  // 4. حظر النسخ والقص وتفريغ الحافظة
+  document.addEventListener('copy', handleClipboardBlock, true);
+  document.addEventListener('cut', handleClipboardBlock, true);
 }
 
 function disableScreenCaptureProtection() {
@@ -717,6 +800,17 @@ function disableScreenCaptureProtection() {
   window.removeEventListener('keydown', handleScreenCaptureKeys, true);
   window.removeEventListener('beforeprint', handleBeforePrint);
   window.removeEventListener('afterprint', handleAfterPrint);
+  document.removeEventListener('copy', handleClipboardBlock, true);
+  document.removeEventListener('cut', handleClipboardBlock, true);
+}
+
+function handleClipboardBlock(e) {
+  if (isExamActive) {
+    e.preventDefault();
+    if (e.clipboardData) {
+      e.clipboardData.setData('text/plain', '');
+    }
+  }
 }
 
 function handleScreenCaptureKeys(e) {
@@ -726,26 +820,30 @@ function handleScreenCaptureKeys(e) {
   const code = e.code ? e.code.toLowerCase() : '';
   const isCtrlOrMeta = e.ctrlKey || e.metaKey;
 
-  // فحص أزرار لقطات الشاشة الشهيرة
+  // فحص أزرار لقطات الشاشة الشهيرة (PrintScreen, Win+Shift+S, Cmd+Shift+3/4/5)
   if (
     key === 'printscreen' ||
+    key === 'snapshot' ||
     code === 'printscreen' ||
+    e.keyCode === 44 ||
     (isCtrlOrMeta && (key === 'p' || key === 's')) ||
-    (e.metaKey && e.shiftKey && (key === '3' || key === '4' || key === '5')) || // Mac Screenshot
-    (e.key === 'Meta' && e.shiftKey && key === 's') // Windows Snipping Tool (Win+Shift+S)
+    (e.metaKey && e.shiftKey && (key === '3' || key === '4' || key === '5')) ||
+    (e.shiftKey && (e.metaKey || key === 'meta') && (key === 's' || code === 'keys')) ||
+    (e.code === 'KeyS' && e.shiftKey && (e.metaKey || e.ctrlKey))
   ) {
     e.preventDefault();
     e.stopPropagation();
 
     // تشغيل الشاشة السوداء فوراً
-    triggerBlackout('تم حظر محاولة أخذ لقطة شاشة');
+    triggerBlackout('تم حظر محاولة أخذ لقطة شاشة أو تسجيل الشاشة');
 
-    // مسح الحافظة Clipboard لمنع لصق الصورة إذا التقطها نظام التشغيل
+    // مسح الحافظة Clipboard لمنع حفظ الصورة
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText('');
       }
     } catch (err) {}
+    return false;
   }
 }
 
@@ -754,12 +852,17 @@ function triggerBlackout(reason) {
     blackoutOverlay.classList.remove('hidden');
     // إخفاء قاعة الامتحان خلف السواد
     const examRoom = document.getElementById('exam-room');
-    if (examRoom) examRoom.style.visibility = 'hidden';
+    if (examRoom) {
+      examRoom.style.visibility = 'hidden';
+      examRoom.style.filter = 'blur(30px)';
+    }
 
     // إعادة الشاشة بعد ثانيتين مع تسجيل تحذير أمني
     setTimeout(() => {
       removeBlackout();
-      handleViolation(reason);
+      if (reason && isExamActive) {
+        handleViolation(reason);
+      }
     }, 1800);
   }
 }
@@ -768,7 +871,10 @@ function removeBlackout() {
   if (blackoutOverlay) {
     blackoutOverlay.classList.add('hidden');
     const examRoom = document.getElementById('exam-room');
-    if (examRoom) examRoom.style.visibility = 'visible';
+    if (examRoom) {
+      examRoom.style.visibility = 'visible';
+      examRoom.style.filter = 'none';
+    }
   }
 }
 

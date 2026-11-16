@@ -18,6 +18,15 @@ const SHEET_USERS = 'Users';
 const SHEET_EXAMS = 'Exams';
 const SHEET_RESULTS = 'Results';
 const SHEET_SETTINGS = 'Settings';
+const SHEET_MONITORING = 'LiveMonitoring';
+
+/**
+ * دالة تهيئة واختبار قاعدة البيانات مباشرة بنقرة واحدة من محرر Google Apps Script
+ */
+function setupDatabase() {
+  initDatabase();
+  Logger.log('تمت تهيئة جميع جداول وقواعد بيانات منصة الاختبارات بنجاح. السيرفر جاهز للعمل!');
+}
 
 /**
  * نقطة استقبال الطلبات (POST Request) من المتصفح
@@ -33,8 +42,12 @@ function doPost(e) {
   try {
     initDatabase();
 
+    // في حالة التشغيل اليدوي من محرر Apps Script بدون إرسال بيانات
     if (!e || !e.postData || !e.postData.contents) {
-      return createJsonResponse({ status: 'error', message: 'بيانات غير صالحة' });
+      return createJsonResponse({
+        status: 'success',
+        message: 'نقطة اتصال Google Apps Script تعمل بكفاءة وجاهزة لاستقبال طلبات المنصة.'
+      });
     }
 
     const data = JSON.parse(e.postData.contents);
@@ -584,10 +597,8 @@ function doPost(e) {
       const creator = String(data.creator || '').trim();
       const role = String(data.role || '').trim();
 
-      // إذا تم تحديد كود معين يتم مسح نتائج ذلك الامتحان فقط، وإذا لم يتم التحديد وكان مديراً يتم تفريغ الجدول بالكامل
       if (examCodeFilter) {
         const rows = resultsSheet.getDataRange().getValues();
-        // الحذف من الأسفل للأعلى لعدم تأثر ترقيم الصفوف
         for (let i = rows.length - 1; i >= 1; i--) {
           if (String(rows[i][1]).trim().toUpperCase() === examCodeFilter) {
             resultsSheet.deleteRow(i + 1);
@@ -598,16 +609,118 @@ function doPost(e) {
           message: `تم مسح جميع نتائج الاختبار (${examCodeFilter}) بنجاح`
         });
       } else {
-        // مسح كل الصفوف ما عدا الهيدر
         const lastRow = resultsSheet.getLastRow();
+        const lastCol = Math.max(resultsSheet.getLastColumn(), 10);
         if (lastRow > 1) {
-          resultsSheet.deleteRows(2, lastRow - 1);
+          resultsSheet.getRange(2, 1, lastRow - 1, lastCol).clearContent();
         }
         return createJsonResponse({
           status: 'success',
           message: 'تم تفريغ جدول نتائج الطلاب بنجاح وبدء دورة اختبارات جديدة'
         });
       }
+    }
+
+    // -------------------------------------------------------------
+    // 8. نظام المراقبة الحية السحابي الفوري (Cloud Cam Relay & Broadcast)
+    // -------------------------------------------------------------
+
+    // 8.1 إرسال إشعار فتح الكاميرا لجميع الطلاب
+    if (action === 'send_cam_alert') {
+      const props = PropertiesService.getScriptProperties();
+      const nowStr = String(Date.now());
+      props.setProperty('FACULTY_CAM_ALERT', nowStr);
+      return createJsonResponse({ status: 'success', timestamp: nowStr, message: 'تم إرسال إشعار فتح الكاميرا لجميع الطلاب بنجاح' });
+    }
+
+    // 8.2 فحص الطالب هل أصدر الأستاذ إشعاراً لفتح الكاميرا
+    if (action === 'check_cam_alert') {
+      const props = PropertiesService.getScriptProperties();
+      const alertTime = Number(props.getProperty('FACULTY_CAM_ALERT') || 0);
+      const clientLastCheck = Number(data.last_checked || 0);
+      const hasNewAlert = (alertTime > clientLastCheck) && (Date.now() - alertTime < 300000); // صالح لـ 5 دقائق
+
+      return createJsonResponse({
+        status: 'success',
+        has_alert: hasNewAlert,
+        timestamp: alertTime
+      });
+    }
+
+    // 8.3 استقبال لقطة البث المباشر للطالب
+    if (action === 'push_cam_frame') {
+      const mSheet = ss.getSheetByName(SHEET_MONITORING);
+      const studentId = String(data.student_id || '').trim();
+      const studentName = String(data.student_name || '').trim();
+      const examId = String(data.exam_id || '').trim().toUpperCase();
+      const grade = String(data.grade || '').trim();
+      let frame = String(data.frame || '');
+      const active = data.active !== false;
+      const now = Date.now();
+
+      // ضمان عدم تجاوز سعة الخلية في جوجل شيت (الحد الأقصى 50 ألف حرف)
+      if (frame && frame.length > 48000) {
+        frame = frame.substring(0, 48000);
+      }
+
+      if (!mSheet) {
+        return createJsonResponse({ status: 'error', message: 'شيت المراقبة غير موجود' });
+      }
+
+      const rows = mSheet.getDataRange().getValues();
+      let foundIndex = -1;
+
+      for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]).trim() === studentId) {
+          foundIndex = i + 1;
+          break;
+        }
+      }
+
+      if (!active) {
+        if (foundIndex > 0) mSheet.deleteRow(foundIndex);
+      } else {
+        if (foundIndex > 0) {
+          mSheet.getRange(foundIndex, 1, 1, 6).setValues([[studentId, studentName, examId, grade, frame, now]]);
+        } else {
+          mSheet.appendRow([studentId, studentName, examId, grade, frame, now]);
+        }
+      }
+
+      return createJsonResponse({ status: 'success' });
+    }
+
+    // 8.4 جلب لقطات البث المباشر لشاشات الأستاذ
+    if (action === 'get_cam_frames') {
+      const mSheet = ss.getSheetByName(SHEET_MONITORING);
+      const rows = mSheet.getDataRange().getValues();
+      const now = Date.now();
+      const streams = [];
+
+      for (let i = 1; i < rows.length; i++) {
+        const studentId = rows[i][0];
+        const studentName = rows[i][1];
+        const examId = rows[i][2];
+        const grade = rows[i][3];
+        const frame = rows[i][4];
+        const lastSeen = Number(rows[i][5] || 0);
+
+        // احتساب الطالب متصلاً إذا أرسل لقطة خلال آخر 25 ثانية
+        if (now - lastSeen < 25000 && frame) {
+          streams.push({
+            studentId: studentId,
+            studentName: studentName,
+            examId: examId,
+            grade: grade,
+            frame: frame
+          });
+        }
+      }
+
+      return createJsonResponse({
+        status: 'success',
+        streams: streams
+      });
     }
 
     return createJsonResponse({ status: 'error', message: 'أمر غير معروف' });
@@ -699,5 +812,13 @@ function initDatabase() {
       'حالة التسليم والملاحظات'
     ]);
     resultsSheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#f1f5f9');
+  }
+
+  // 5. شيت البث المباشر والمراقبة السحابية
+  let mSheet = ss.getSheetByName(SHEET_MONITORING);
+  if (!mSheet) {
+    mSheet = ss.insertSheet(SHEET_MONITORING);
+    mSheet.appendRow(['رقم الطالب', 'اسم الطالب', 'كود الامتحان', 'الفرقة', 'لقطة الكاميرا', 'آخر ظهور']);
+    mSheet.getRange(1, 1, 1, 6).setFontWeight('bold').setBackground('#f1f5f9');
   }
 }
