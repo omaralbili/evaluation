@@ -32,13 +32,6 @@ function setupDatabase() {
  * نقطة استقبال الطلبات (POST Request) من المتصفح
  */
 function doPost(e) {
-  const lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(12000);
-  } catch (err) {
-    return createJsonResponse({ status: 'error', message: 'السيرفر مشغول حالياً، يرجى المحاولة بعد لحظات' });
-  }
-
   try {
     initDatabase();
 
@@ -498,7 +491,7 @@ function doPost(e) {
     }
 
     // -------------------------------------------------------------
-    // 5. تصحيح وتسليم الامتحان (Submit Exam)
+    // 5. تصحيح وتسليم الامتحان (Submit Exam) - بنية طابور معالجة متزامن فائق السرعة
     // -------------------------------------------------------------
     if (action === 'submit_exam') {
       const examId = String(data.exam_id || '').trim().toUpperCase();
@@ -510,53 +503,109 @@ function doPost(e) {
       const studentAnswers = data.answers || {};
       const cheatStatus = String(data.cheat_status || 'تم التسليم').trim();
 
-      const examsSheet = ss.getSheetByName(SHEET_EXAMS);
-      const examsRows = examsSheet.getDataRange().getValues();
-      let originalQuestions = null;
-
-      for (let i = 1; i < examsRows.length; i++) {
-        if (String(examsRows[i][0]).trim().toUpperCase() === examId) {
-          originalQuestions = JSON.parse(examsRows[i][5] || '[]');
-          break;
-        }
+      // طابور انتظار مخصص لعملية الحفظ مع مهلة 30 ثانية لتنظيم تسلسل الطلاب
+      const lock = LockService.getScriptLock();
+      let hasLock = false;
+      try {
+        hasLock = lock.tryLock(30000);
+      } catch (e) {
+        hasLock = false;
       }
 
-      if (!originalQuestions) {
-        return createJsonResponse({ status: 'error', message: 'بيانات الامتحان الأصلية مفقودة' });
+      if (!hasLock) {
+        return createJsonResponse({
+          status: 'busy',
+          retry: true,
+          message: 'السيرفر يقوم حالياً بجدولة ورصد إجابات دفعة طلاب أخرى، جاري المحاولة تلقائياً...'
+        });
       }
 
-      let score = 0;
-      const total = originalQuestions.length;
+      try {
+        const cache = CacheService.getScriptCache();
+        const props = PropertiesService.getScriptProperties();
+        const dedupKey = 'sub_' + examId + '_' + studentId;
 
-      originalQuestions.forEach((q, idx) => {
-        const studentAns = String(studentAnswers[idx] || '').trim();
-        const correctAns = String(q.correct || '').trim();
-        if (studentAns === correctAns) {
-          score++;
+        // 1. منع التكرار في حالة الإرسال المتزامن أو إعادة المحاولة (Idempotency Guard)
+        if (cache.get(dedupKey)) {
+          return createJsonResponse({
+            status: 'success',
+            cheat_status: cheatStatus,
+            message: 'تم استلام وتأكيد حفظ إجاباتك مسبقاً بنجاح'
+          });
         }
-      });
 
-      const resultsSheet = ss.getSheetByName(SHEET_RESULTS);
-      const now = Utilities.formatDate(new Date(), 'Africa/Cairo', 'yyyy-MM-dd HH:mm:ss');
+        // 2. فحص الكاش للأسئلة والإجابات النموذجية لتسريع المعالجة إلى أجزاء من الثانية (RAM Caching)
+        let originalQuestions = null;
+        const cachedQ = cache.get('exam_q_' + examId);
+        if (cachedQ) {
+          try {
+            originalQuestions = JSON.parse(cachedQ);
+          } catch(e) {}
+        }
 
-      resultsSheet.appendRow([
-        now,
-        examId,
-        studentName,
-        studentId,
-        studentGrade,
-        studentBranch,
-        studentPassword,
-        score,
-        total,
-        cheatStatus
-      ]);
+        if (!originalQuestions) {
+          const examsSheet = ss.getSheetByName(SHEET_EXAMS);
+          const examsRows = examsSheet.getDataRange().getValues();
+          for (let i = 1; i < examsRows.length; i++) {
+            if (String(examsRows[i][0]).trim().toUpperCase() === examId) {
+              originalQuestions = JSON.parse(examsRows[i][5] || '[]');
+              // حفظ في الكاش لمدة 6 ساعات لخدمة كافة الطلاب القادمين فوراً بسرعة البرق
+              cache.put('exam_q_' + examId, JSON.stringify(originalQuestions), 21600);
+              break;
+            }
+          }
+        }
 
-      return createJsonResponse({
-        status: 'success',
-        cheat_status: cheatStatus,
-        message: 'تم تسليم وحفظ الإجابات بنجاح'
-      });
+        if (!originalQuestions) {
+          return createJsonResponse({ status: 'error', message: 'بيانات الامتحان الأصلية مفقودة' });
+        }
+
+        let score = 0;
+        const total = originalQuestions.length;
+
+        originalQuestions.forEach((q, idx) => {
+          const studentAns = String(studentAnswers[idx] || '').trim();
+          const correctAns = String(q.correct || '').trim();
+          if (studentAns === correctAns) {
+            score++;
+          }
+        });
+
+        // 3. عداد تسلسل أحادي لتحديد رقم الدور الدقيق للطالب في الطابور (Monotonic Sequence Counter)
+        const currentSeq = Number(props.getProperty('GLOBAL_SUBMISSION_COUNTER') || 0) + 1;
+        props.setProperty('GLOBAL_SUBMISSION_COUNTER', String(currentSeq));
+
+        // 4. كتابة وتثبيت النتيجة فوراً بالترتيب الزمني الدقيق بالمللي ثانية
+        const resultsSheet = ss.getSheetByName(SHEET_RESULTS);
+        const now = Utilities.formatDate(new Date(), 'Africa/Cairo', 'yyyy-MM-dd HH:mm:ss.SSS');
+
+        resultsSheet.appendRow([
+          now,
+          examId,
+          studentName,
+          studentId,
+          studentGrade,
+          studentBranch,
+          studentPassword,
+          score,
+          total,
+          `${cheatStatus} [تسلسل: #${currentSeq}]`
+        ]);
+
+        SpreadsheetApp.flush(); // تثبيت مباشر في الجداول
+        cache.put(dedupKey, '1', 86400); // وسم إتمام التسليم بنجاح لمنع أي تكرار لمدة 24 ساعة
+
+        return createJsonResponse({
+          status: 'success',
+          cheat_status: cheatStatus,
+          score: score,
+          total: total,
+          queue_number: currentSeq,
+          message: 'تم تسليم وحفظ الإجابات بنجاح'
+        });
+      } finally {
+        lock.releaseLock();
+      }
     }
 
     // -------------------------------------------------------------
@@ -727,8 +776,6 @@ function doPost(e) {
 
   } catch (error) {
     return createJsonResponse({ status: 'error', message: error.toString() });
-  } finally {
-    lock.releaseLock();
   }
 }
 
