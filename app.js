@@ -96,10 +96,11 @@ async function apiCall(payload) {
   }
 }
 
-// تحميل إعدادات Regex تلقائياً عند بدء الصفحة
+// تحميل إعدادات Regex تلقائياً عند بدء الصفحة وفحص أي تسليمات معلقة
 document.addEventListener('DOMContentLoaded', () => {
   loadSettingsFromServer();
   onGradeChange();
+  checkAndRecoverPendingSubmissions();
 });
 
 async function loadSettingsFromServer() {
@@ -135,7 +136,7 @@ let camAlertCheckInterval = null;
 let isActivatingCamera = false; // لمنع اعتبار طلب إذن الكاميرا محاولة غش
 let lastCamAlertTimestamp = Date.now();
 
-// فحص دوري سحابي لاستقبال إشعارات وتنبيهات الأستاذ لفتح الكاميرا
+// فحص دوري سحابي ذكي لاستقبال إشعارات وتنبيهات الأستاذ لفتح الكاميرا (مُحسّن لتحمل 300+ طالب)
 function startCamAlertPolling() {
   if (camAlertCheckInterval) clearInterval(camAlertCheckInterval);
   camAlertCheckInterval = setInterval(async () => {
@@ -155,7 +156,7 @@ function startCamAlertPolling() {
         showFacultyCamRequestAlert();
       }
     } catch (err) {}
-  }, 3500);
+  }, 12000);
 }
 
 function showFacultyCamRequestAlert() {
@@ -293,7 +294,7 @@ function startCameraBroadcast() {
       }).catch(() => {});
 
     } catch (e) {}
-  }, 2500);
+  }, 6500);
 }
 
 function stopStudentCamera() {
@@ -429,17 +430,48 @@ function renderQuestions(questions) {
       `;
     });
 
+    // دعم عرض صورة توضيحية خفيفة وأنيقة للسؤال دون أن تأخذ حيزاً كبيراً
+    let imageHtml = '';
+    if (q.image) {
+      const safeImg = escapeHTML(q.image);
+      imageHtml = `
+        <div class="mb-3.5 flex flex-col items-start">
+          <div class="q-img-thumb relative group cursor-pointer border border-slate-200 rounded-lg overflow-hidden bg-slate-50 hover:border-blue-500 transition-all shadow-sm max-w-sm" onclick="showQuestionImageModal('${safeImg}')">
+            <img src="${safeImg}" alt="صورة السؤال" class="max-h-40 md:max-h-44 w-auto object-contain p-1 rounded" loading="lazy">
+            <div class="absolute bottom-1 left-1 bg-slate-900/80 text-white text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-sans">
+              <i class="fa-solid fa-magnifying-glass-plus"></i> انقر للتكبير
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     card.innerHTML = `
       <div class="flex items-center justify-between mb-3">
         <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">السؤال ${idx + 1} من ${questions.length}</span>
       </div>
-      <p class="font-bold text-base md:text-lg mb-4 text-slate-900 leading-relaxed">${safeText}</p>
+      <p class="font-bold text-base md:text-lg mb-3 text-slate-900 leading-relaxed">${safeText}</p>
+      ${imageHtml}
       <div class="space-y-2.5">
         ${optionsHtml}
       </div>
     `;
 
     container.appendChild(card);
+  });
+}
+
+function showQuestionImageModal(src) {
+  Swal.fire({
+    imageUrl: src,
+    imageAlt: 'صورة السؤال التوضيحية',
+    showCloseButton: true,
+    showConfirmButton: false,
+    width: 'auto',
+    padding: '0.8rem',
+    customClass: {
+      image: 'max-h-[75vh] w-auto object-contain rounded-lg shadow-sm m-0'
+    }
   });
 }
 
@@ -491,7 +523,11 @@ function startTimer(seconds) {
 
     if (remaining <= 0) {
       clearInterval(examTimer);
-      submitExam('انتهى الوقت المحدد للامتحان تلقائياً');
+      // توزيع عشوائي زمني ذكي (Jittered Slot) لفض تدفق الـ 300 طالب بالتساوي ومنع ضغط السيرفر
+      const initialSlotDelay = Math.floor(Math.random() * 3200);
+      setTimeout(() => {
+        submitExam('انتهى الوقت المحدد للامتحان تلقائياً');
+      }, initialSlotDelay);
     }
     remaining--;
   }, 1000);
@@ -546,6 +582,7 @@ async function submitExam(statusReason) {
   document.body.classList.remove('exam-active-mode');
   removeSecurityWatermark();
 
+  // 1. تجميع الإجابات بدقة متناهية
   const answers = {};
   if (currentExam && currentExam.questions) {
     currentExam.questions.forEach(q => {
@@ -560,10 +597,6 @@ async function submitExam(statusReason) {
 
   stopStudentCamera();
 
-  document.getElementById('exam-room').classList.add('hidden');
-  document.getElementById('navbar').classList.remove('hidden');
-  showSection('student-login');
-
   const payload = {
     action: 'submit_exam',
     exam_id: currentExam ? currentExam.exam_id : '',
@@ -573,45 +606,170 @@ async function submitExam(statusReason) {
     student_branch: currentExam ? currentExam.student_branch : '',
     student_password: currentExam ? currentExam.student_password : '',
     answers: answers,
-    cheat_status: statusReason
+    cheat_status: statusReason,
+    client_timestamp: Date.now()
   };
 
-  const res = await apiCall(payload);
+  // 2. سجل المعاملات المحلي الفوري (Write-Ahead-Log - WAL) لضمان عدم ضياع أي إجابة تحت أي ظرف
+  const backupKey = `exam_wal_backup_${payload.student_id}_${payload.exam_id}`;
+  try {
+    localStorage.setItem(backupKey, JSON.stringify(payload));
+  } catch (e) {}
 
-  if (res && res.status === 'success') {
-    const isViolation = statusReason.includes('غش') || statusReason.includes('مغادرة') || statusReason.includes('محظورة');
-    
-    if (isViolation) {
-      Swal.fire({
-        title: 'تم قفل الامتحان وإنهاء الجلسة',
-        html: `
-          <div class="text-right text-sm space-y-2 mt-2">
-            <p><b>سبب الإغلاق:</b> <span class="text-red-600 font-bold">${escapeHTML(statusReason)}</span></p>
-            <p class="text-xs text-slate-500">تم تسجيل المخالفة وحفظ البيانات في سجل المراقبة الخاص بالأستاذ.</p>
-          </div>
-        `,
-        icon: 'error',
-        confirmButtonText: 'إغلاق',
-        confirmButtonColor: '#e11d48'
+  // 3. معالجة التسليم عبر طابور انتظار متزامن فائق التحمل لـ 300+ طالب (Resilient Queue)
+  await processSubmissionWithResilientQueue(payload, statusReason, backupKey);
+}
+
+/**
+ * خوارزمية طابور التسليم المقاومة للتصادم والضغط الشديد (Concurrent Queue with Jittered Exponential Backoff)
+ * مصممة هندسياً لتحمل تسليم 300+ طالب في نفس اللحظة دون سقوط أي إجابة
+ */
+async function processSubmissionWithResilientQueue(payload, statusReason, backupKey) {
+  const MAX_RETRIES = 8;
+  let attempt = 0;
+  let isSuccess = false;
+
+  Swal.fire({
+    title: 'جاري تسجيل وتأكيد إجاباتك...',
+    html: `
+      <div class="text-center space-y-3 py-2">
+        <div class="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+        <p class="text-xs text-slate-600 font-semibold leading-relaxed" id="submission-queue-status">يتم الآن جدولة وتثبيت بياناتك بالترتيب في قاعدة البيانات...</p>
+        <span class="inline-block text-[11px] bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-mono" id="submission-attempt-chip">المحاولة 1 من ${MAX_RETRIES}</span>
+      </div>
+    `,
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    showConfirmButton: false
+  });
+
+  while (attempt < MAX_RETRIES && !isSuccess) {
+    attempt++;
+
+    const statusEl = document.getElementById('submission-queue-status');
+    const chipEl = document.getElementById('submission-attempt-chip');
+    if (chipEl) chipEl.innerText = `المحاولة ${attempt} من ${MAX_RETRIES}`;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000); // مهلة 25 ثانية لكل محاولة
+
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
-    } else {
-      Swal.fire({
-        title: 'تم تسليم وحفظ الإجابات بنجاح',
-        html: `
-          <div class="text-center text-sm space-y-2 mt-2">
-            <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-2 text-xl border border-emerald-200">
-              <i class="fa-solid fa-check"></i>
-            </div>
-            <p class="font-bold text-slate-800">شكراً لك، تم استلام إجاباتك ورصدها بنجاح.</p>
-            <p class="text-xs text-slate-500">ستُعلن النتائج والدرجات لاحقاً من قِبل أستاذ المادة أو إدارة الكلية.</p>
-          </div>
-        `,
-        icon: 'success',
-        confirmButtonText: 'العودة للرئيسية',
-        confirmButtonColor: '#2563eb'
-      });
+
+      clearTimeout(timeoutId);
+      const data = await res.json();
+
+      if (data && data.status === 'success') {
+        isSuccess = true;
+        // حذف النسخة الاحتياطية المحلية فور تأكيد الاستلام السحابي
+        try { localStorage.removeItem(backupKey); } catch (e) {}
+
+        // إخفاء قاعة الامتحان والعودة للرئيسية
+        document.getElementById('exam-room').classList.add('hidden');
+        document.getElementById('navbar').classList.remove('hidden');
+        showSection('student-login');
+
+        const isViolation = statusReason.includes('غش') || statusReason.includes('مغادرة') || statusReason.includes('محظورة');
+        if (isViolation) {
+          Swal.fire({
+            title: 'تم قفل الامتحان وإنهاء الجلسة',
+            html: `
+              <div class="text-right text-sm space-y-2 mt-2">
+                <p><b>سبب الإغلاق:</b> <span class="text-red-600 font-bold">${escapeHTML(statusReason)}</span></p>
+                <p class="text-xs text-slate-500">تم تسجيل المخالفة وحفظ النتيجة في سجل المراقبة بنجاح.</p>
+              </div>
+            `,
+            icon: 'error',
+            confirmButtonText: 'إغلاق',
+            confirmButtonColor: '#e11d48'
+          });
+        } else {
+          const queueText = data.queue_number ? `<span class="inline-block bg-sky-50 text-sky-700 px-3 py-1 rounded-full text-xs font-mono font-bold mt-1">رقم الدور في الطابور: #${data.queue_number}</span>` : '';
+          Swal.fire({
+            title: 'تم استلام وتأكيد إجاباتك بنجاح!',
+            html: `
+              <div class="text-center text-sm space-y-2 mt-2">
+                <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-2 text-xl border border-emerald-200">
+                  <i class="fa-solid fa-check"></i>
+                </div>
+                <p class="font-bold text-slate-800">شكراً لك، تم رصد درجاتك وحفظ إجاباتك كاملة في قاعدة البيانات بنجاح.</p>
+                ${queueText}
+                <p class="text-xs text-slate-500 mt-2">ستُعلن النتائج لاحقاً من قِبل أستاذ المادة أو إدارة الكلية.</p>
+              </div>
+            `,
+            icon: 'success',
+            confirmButtonText: 'العودة للرئيسية',
+            confirmButtonColor: '#2563eb'
+          });
+        }
+        return;
+      } else {
+        // إذا كان السيرفر مشغولاً بجدولة رصد دفعة طلاب أخرى
+        if (statusEl) {
+          statusEl.innerText = data.message || 'السيرفر يقوم بترتيب رصد إجابات دفعة الطلاب حالياً، جاري إعادة المحاولة آلياً...';
+        }
+      }
+    } catch (err) {
+      if (statusEl) {
+        statusEl.innerText = 'جاري إعادة الاتصال بالسيرفر وتثبيت النتيجة... يرجى الانتظار ثوانٍ معدودة';
+      }
+    }
+
+    if (!isSuccess && attempt < MAX_RETRIES) {
+      // خوارزمية التراجع العشوائي (Jittered Exponential Backoff) لفض التزاحم العادل بين الطلاب
+      const jitter = Math.random() * 800;
+      const delay = Math.min(1000 * Math.pow(1.35, attempt) + jitter, 5000);
+      await new Promise(r => setTimeout(r, delay));
     }
   }
+
+  // في حال فشل كل المحاولات (انقطاع كامل في إنترنت الطالب مثلاً)
+  Swal.fire({
+    title: 'إجاباتك محفوظة بأمان تام',
+    html: `
+      <div class="text-right text-sm space-y-2 mt-2">
+        <p class="text-amber-800 font-bold">جميع إجاباتك محفوظة بالكامل على جهازك ولم يُفقد أي شيء!</p>
+        <p class="text-xs text-slate-600">يبدو أن هناك ضغطاً كثيفاً أو ضعفاً في اتصال الإنترنت حالياً. يرجى الضغط على زر "إعادة إرسال الإجابات الآن" فور توفر الاتصال.</p>
+      </div>
+    `,
+    icon: 'warning',
+    confirmButtonText: 'إعادة إرسال الإجابات الآن',
+    confirmButtonColor: '#059669',
+    allowOutsideClick: false
+  }).then(() => {
+    processSubmissionWithResilientQueue(payload, statusReason, backupKey);
+  });
+}
+
+/**
+ * فحص تلقائي لأي تسليمات محلية معلقة لم تصل للسيرفر بسبب انقطاع مفاجئ وإعادة إرسالها فور فتح الموقع
+ */
+function checkAndRecoverPendingSubmissions() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('exam_wal_backup_')) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const payload = JSON.parse(raw);
+          fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+          }).then(res => res.json()).then(data => {
+            if (data && data.status === 'success') {
+              localStorage.removeItem(key);
+            }
+          }).catch(() => {});
+        }
+      }
+    }
+  } catch (e) {}
 }
 
 // ==========================================
@@ -925,6 +1083,7 @@ function handleExamScreenStrictClick(e) {
   const isAllowed = target.closest('.option-label') ||
                     target.closest('.option-radio') ||
                     target.closest('input[type="radio"]') ||
+                    target.closest('.q-img-thumb') ||
                     target.closest('#student-camera-btn') ||
                     target.closest('#student-cam-preview-box') ||
                     target.closest('button[onclick*="Exit"]') ||

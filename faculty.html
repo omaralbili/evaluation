@@ -311,6 +311,37 @@
           <label class="block text-xs font-bold text-slate-600 mb-1">نص السؤال:</label>
           <input type="text" placeholder="اكتب نص السؤال هنا..." class="q-text input-field font-semibold" required>
         </div>
+
+        <!-- إرفاق صورة توضيحية للسؤال (اختياري) -->
+        <div class="bg-white p-2.5 rounded-lg border border-slate-200">
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <span class="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+              <i class="fa-regular fa-image text-sky-600"></i> إرفاق صورة توضيحية للسؤال (اختياري)
+            </span>
+            <span class="text-[10px] text-slate-400">يمكنك رفع صورة من جهازك أو وضع رابط</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="btn btn-outline text-[11px] py-1 px-2.5 cursor-pointer hover:bg-sky-50 hover:border-sky-300">
+              <i class="fa-solid fa-upload text-sky-600"></i> رفع صورة من الجهاز
+              <input type="file" accept="image/*" class="hidden q-image-file" onchange="handleQuestionImageUpload(this)">
+            </label>
+            <span class="text-[11px] text-slate-400">أو</span>
+            <input type="url" placeholder="ضع رابط صورة مباشر (URL)..." class="q-image-url input-field text-[11px] flex-1 py-1" oninput="handleQuestionImageUrl(this)">
+            <input type="hidden" class="q-image-data">
+          </div>
+          <!-- صندوق معاينة الصورة المرفقة -->
+          <div class="q-image-preview-box hidden mt-2 flex items-center gap-3 p-1.5 bg-slate-50 border rounded-md">
+            <img class="q-image-preview h-14 w-20 object-contain rounded border bg-white" src="" alt="معاينة الصورة">
+            <div class="flex-1">
+              <span class="text-[11px] text-emerald-600 font-bold block"><i class="fa-solid fa-circle-check"></i> تم إرفاق وضغط الصورة بنجاح</span>
+              <span class="text-[10px] text-slate-400 block">حجم مناسب ومضغوط وسريع التحميل للطالب</span>
+            </div>
+            <button type="button" onclick="removeQuestionImage(this)" class="btn btn-outline text-rose-500 hover:text-rose-700 hover:bg-rose-50 text-[11px] py-1 px-2 font-bold">
+              <i class="fa-solid fa-trash-can"></i> حذف الصورة
+            </button>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
           <div>
             <label class="block text-[11px] font-bold text-slate-500 mb-0.5">الاختيار 1:</label>
@@ -342,6 +373,81 @@
       container.appendChild(div);
     }
 
+    function handleQuestionImageUpload(fileInput) {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const block = fileInput.closest('.q-block');
+      const previewBox = block.querySelector('.q-image-preview-box');
+      const previewImg = block.querySelector('.q-image-preview');
+      const dataInput = block.querySelector('.q-image-data');
+      const urlInput = block.querySelector('.q-image-url');
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const maxDim = 600; // أقصى بعد 600px لضغط الصورة إلى حجم خفيف جداً (~20KB)
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const compressed = canvas.toDataURL('image/jpeg', 0.65);
+          dataInput.value = compressed;
+          previewImg.src = compressed;
+          previewBox.classList.remove('hidden');
+          if (urlInput) urlInput.value = '';
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function handleQuestionImageUrl(urlInput) {
+      const url = urlInput.value.trim();
+      const block = urlInput.closest('.q-block');
+      const previewBox = block.querySelector('.q-image-preview-box');
+      const previewImg = block.querySelector('.q-image-preview');
+      const dataInput = block.querySelector('.q-image-data');
+
+      if (url) {
+        dataInput.value = url;
+        previewImg.src = url;
+        previewBox.classList.remove('hidden');
+      } else {
+        dataInput.value = '';
+        previewBox.classList.add('hidden');
+      }
+    }
+
+    function removeQuestionImage(btn) {
+      const block = btn.closest('.q-block');
+      const previewBox = block.querySelector('.q-image-preview-box');
+      const previewImg = block.querySelector('.q-image-preview');
+      const dataInput = block.querySelector('.q-image-data');
+      const fileInput = block.querySelector('.q-image-file');
+      const urlInput = block.querySelector('.q-image-url');
+
+      dataInput.value = '';
+      if (fileInput) fileInput.value = '';
+      if (urlInput) urlInput.value = '';
+      previewImg.src = '';
+      previewBox.classList.add('hidden');
+    }
+
     async function publishFacultyExam() {
       const title = document.getElementById('faculty-exam-title').value.trim();
       const customCode = document.getElementById('faculty-custom-code').value.trim().toUpperCase();
@@ -362,12 +468,13 @@
         const opt3 = b.querySelector('.q-opt3').value.trim();
         const opt4 = b.querySelector('.q-opt4').value.trim();
         const correct = b.querySelector('.q-correct').value;
+        const image = b.querySelector('.q-image-data') ? b.querySelector('.q-image-data').value.trim() : '';
 
         if (!text || !opt1 || !opt2 || !opt3 || !opt4) {
           isComplete = false;
         }
 
-        questions.push({ text, opt1, opt2, opt3, opt4, correct });
+        questions.push({ text, opt1, opt2, opt3, opt4, correct, image });
       });
 
       if (!isComplete) {

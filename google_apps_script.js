@@ -476,8 +476,15 @@ function doPost(e) {
       const studentQuestions = rawQuestions.map((q, idx) => ({
         index: idx,
         text: q.text,
+        image: q.image || '',
         options: [q.opt1, q.opt2, q.opt3, q.opt4]
       }));
+
+      // حفظ نموذج الأسئلة مسبقاً في الذاكرة السريعة (RAM Cache) لضمان تسليم فوري لـ 300+ طالب دون قراءة الشيت
+      try {
+        const cache = CacheService.getScriptCache();
+        cache.put('exam_q_' + examId, JSON.stringify(rawQuestions), 21600);
+      } catch (e) {}
 
       return createJsonResponse({
         status: 'success',
