@@ -26,6 +26,80 @@ let gradeRegexRules = {
 };
 
 // ==========================================
+// 0. منظومة إدارة الوضع الليلي والنهاري (Dark / Light Theme Suite)
+// ==========================================
+function initTheme() {
+  try {
+    const savedTheme = localStorage.getItem('app_theme');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const currentTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+    applyTheme(currentTheme);
+  } catch (e) {}
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  if (theme === 'dark') {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+  try {
+    localStorage.setItem('app_theme', theme);
+  } catch (e) {}
+  updateThemeIcons(theme);
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' || document.documentElement.classList.contains('dark');
+  const newTheme = isDark ? 'light' : 'dark';
+  applyTheme(newTheme);
+}
+
+function updateThemeIcons(theme) {
+  const buttons = document.querySelectorAll('.theme-toggle-btn');
+  buttons.forEach(btn => {
+    if (theme === 'dark') {
+      btn.innerHTML = '<i class="fa-solid fa-sun text-amber-400"></i>';
+      btn.title = 'تفعيل الوضع النهاري';
+    } else {
+      btn.innerHTML = '<i class="fa-solid fa-moon text-slate-700"></i>';
+      btn.title = 'تفعيل الوضع الليلي';
+    }
+  });
+}
+
+// تهيئة فورية للوضع الليلي عند تحميل الصفحة
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTheme);
+  } else {
+    initTheme();
+  }
+}
+
+// تبديل إظهار / إخفاء كلمة المرور (أيقونة العين) للطلاب وأعضاء هيئة التدريس والإدارة
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+
+  const currentType = input.getAttribute('type');
+  const isPassword = currentType === 'password';
+  input.setAttribute('type', isPassword ? 'text' : 'password');
+
+  const icon = btn ? btn.querySelector('i') : null;
+  if (icon) {
+    if (isPassword) {
+      icon.classList.remove('fa-eye');
+      icon.classList.add('fa-eye-slash');
+    } else {
+      icon.classList.remove('fa-eye-slash');
+      icon.classList.add('fa-eye');
+    }
+  }
+}
+
+// ==========================================
 // 1. أمن البيانات ودوال الحماية (Security Suite)
 // ==========================================
 
@@ -63,40 +137,50 @@ function showSection(id) {
   }
 }
 
-async function apiCall(payload) {
-  Swal.fire({
-    title: 'جاري المعالجة...',
-    text: 'يرجى الانتظار ثوانٍ معدودة',
-    allowOutsideClick: false,
-    allowEscapeKey: false,
-    showConfirmButton: false,
-    didOpen: () => Swal.showLoading()
-  });
+async function apiCall(payload, options = {}) {
+  const showModal = !options.silent && !payload.silent;
+  if (showModal) {
+    Swal.fire({
+      title: 'جاري المعالجة...',
+      text: 'يرجى الانتظار ثوانٍ معدودة',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: () => Swal.showLoading()
+    });
+  }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
     const data = await res.json();
-    Swal.close();
+    if (showModal) Swal.close();
     return data;
   } catch (e) {
-    Swal.fire({
-      title: 'خطأ في الاتصال',
-      text: 'تعذر الاتصال بالخادم. يرجى التأكد من اتصال الإنترنت وتحديث تطبيق Google Apps Script.',
-      icon: 'error',
-      confirmButtonText: 'حسناً'
-    });
+    if (showModal) {
+      Swal.fire({
+        title: 'خطأ في الاتصال',
+        text: 'تعذر الاتصال بالخادم أو انتهت مهلة الاستجابة. يرجى التأكد من اتصال الإنترنت وتحديث النشر.',
+        icon: 'error',
+        confirmButtonText: 'حسناً'
+      });
+    }
     return null;
   }
 }
 
-// تحميل إعدادات Regex تلقائياً عند بدء الصفحة وفحص أي تسليمات معلقة
+// تحميل إعدادات Regex تلقائياً عند بدء الصفحة وفحص أي تسليمات معلقة مع كاش فوري
 document.addEventListener('DOMContentLoaded', () => {
   loadSettingsFromServer();
   onGradeChange();
@@ -105,6 +189,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadSettingsFromServer() {
   try {
+    // 1. استرجاع فوري من الكاش المحلي لمنع أي تأخير في الاستجابة
+    const cachedSettings = sessionStorage.getItem('cached_grade_rules');
+    if (cachedSettings) {
+      try {
+        const parsed = JSON.parse(cachedSettings);
+        if (parsed && Object.keys(parsed).length > 0) {
+          gradeRegexRules = parsed;
+          onGradeChange();
+          populateRegexInputs();
+        }
+      } catch (e) {}
+    }
+
+    // 2. تحديث متزامن خفيف في الخلفية
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -113,6 +211,7 @@ async function loadSettingsFromServer() {
     const data = await res.json();
     if (data && data.status === 'success' && data.rules && Object.keys(data.rules).length > 0) {
       gradeRegexRules = data.rules;
+      sessionStorage.setItem('cached_grade_rules', JSON.stringify(data.rules));
       onGradeChange();
       populateRegexInputs();
     }
@@ -325,12 +424,38 @@ async function startStudentExam(e) {
   const name = document.getElementById('st-name').value.trim();
   const grade = document.getElementById('st-grade').value.trim();
   const branch = document.getElementById('st-branch').value.trim();
-  const id = document.getElementById('st-id').value.trim();
+  const id = document.getElementById('st-id') ? document.getElementById('st-id').value.trim() : '';
   const examId = document.getElementById('st-exam-code').value.trim().toUpperCase();
   const password = document.getElementById('st-password').value.trim();
 
-  if (!name || !grade || !branch || !id || !examId || !password) {
-    return Swal.fire('تنبيه', 'يرجى استكمال جميع البيانات بدقة (الاسم، الفرقة، الفرع، الـ ID، الكود، وكلمة المرور)', 'warning');
+  // الرقم التعريفي / الجامعي (ID) اختياري وليس إجبارياً
+  if (!name || !grade || !branch || !examId || !password) {
+    return Swal.fire('تنبيه', 'يرجى استكمال جميع الحقول المطلوبة (الاسم، الفرقة، الفرع، كود الاختبار، وكلمة المرور)', 'warning');
+  }
+
+  // 0. فحص الجلسة محلياً (الدخول لمرة واحدة فقط لعند ما يسلم، ومنع الخروج وإعادة الدخول)
+  const studentNorm = name.toLowerCase().replace(/[أإآء]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
+  const finishedKey = `exam_done_${examId}_${studentNorm}`;
+  const sessionKey = `exam_session_${examId}_${studentNorm}`;
+
+  if (localStorage.getItem(finishedKey)) {
+    return Swal.fire({
+      title: 'غير مسموح بالدخول!',
+      text: 'لقد قمت بأداء هذا الامتحان وتسليمه مسبقاً، ولا يُسمح بالدخول أو الإعادة نهائياً.',
+      icon: 'error',
+      confirmButtonText: 'حسناً',
+      confirmButtonColor: '#e11d48'
+    });
+  }
+
+  if (localStorage.getItem(sessionKey)) {
+    return Swal.fire({
+      title: 'غير مسموح بالدخول!',
+      text: 'لقد قمت بالدخول لهذا الامتحان مسبقاً! نظام الاختبارات يسمح بالدخول لمرة واحدة فقط حتى التسليم، ولا يُسمح بالخروج وفتح الامتحان مجدداً.',
+      icon: 'error',
+      confirmButtonText: 'حسناً',
+      confirmButtonColor: '#e11d48'
+    });
   }
 
   // 1. التحقق من تطابق كلمة المرور مع Regex الفرقة المختارة في الفرونت إند أولاً
@@ -350,10 +475,11 @@ async function startStudentExam(e) {
     }
   }
 
-  // 2. طلب بدء الامتحان والتحقق السحابي (Regex + فحص عدم تكرار كلمة المرور نهائياً)
+  // 2. طلب بدء الامتحان والتحقق السحابي الشامل (الاسم + الامتحان + عدم الخروج وإعادة الدخول + كوتا كلمة المرور)
   const res = await apiCall({
     action: 'get_exam',
     exam_id: examId,
+    student_name: name,
     student_id: id,
     student_grade: grade,
     student_branch: branch,
@@ -363,6 +489,11 @@ async function startStudentExam(e) {
   if (!res || res.status !== 'success') {
     return Swal.fire('تنبيه أمني', res ? res.message : 'تعذر تحميل بيانات الامتحان', 'warning');
   }
+
+  // تثبيت بدء الجلسة فور استلام الأسئلة لمنع أي خروج وإعادة دخول
+  try {
+    localStorage.setItem(sessionKey, 'started_' + Date.now());
+  } catch(e) {}
 
   // محاولة الدخول لوضع ملء الشاشة
   try {
@@ -387,7 +518,8 @@ async function startStudentExam(e) {
 
   // ملء بيانات الترويسة
   document.getElementById('exam-title-display').innerText = res.exam.title || 'الاختبار الإلكتروني';
-  document.getElementById('student-info-display').innerText = `الطالب: ${name} | ${grade} (${branch}) | ID: ${id}`;
+  const idDisplay = id ? ` | ID: ${id}` : '';
+  document.getElementById('student-info-display').innerText = `الطالب: ${name} | ${grade} (${branch})${idDisplay}`;
 
   // بناء الأسئلة
   renderQuestions(currentExam.questions);
@@ -411,6 +543,8 @@ function renderQuestions(questions) {
   const container = document.getElementById('questions-container');
   container.innerHTML = '';
 
+  const fragment = document.createDocumentFragment();
+
   questions.forEach((q, idx) => {
     const card = document.createElement('div');
     card.className = 'question-card animate-fade-in';
@@ -430,14 +564,14 @@ function renderQuestions(questions) {
       `;
     });
 
-    // دعم عرض صورة توضيحية خفيفة وأنيقة للسؤال دون أن تأخذ حيزاً كبيراً
+    // دعم عرض صورة توضيحية خفيفة وأنيقة للسؤال مع تفعيل وضع lazy load وفك التشفير غير المتزامن لسرعة الاستجابة
     let imageHtml = '';
     if (q.image) {
       const safeImg = escapeHTML(q.image);
       imageHtml = `
         <div class="mb-3.5 flex flex-col items-start">
           <div class="q-img-thumb relative group cursor-pointer border border-slate-200 rounded-lg overflow-hidden bg-slate-50 hover:border-blue-500 transition-all shadow-sm max-w-sm" onclick="showQuestionImageModal('${safeImg}')">
-            <img src="${safeImg}" alt="صورة السؤال" class="max-h-40 md:max-h-44 w-auto object-contain p-1 rounded" loading="lazy">
+            <img src="${safeImg}" alt="صورة السؤال" class="max-h-40 md:max-h-44 w-auto object-contain p-1 rounded" loading="lazy" decoding="async">
             <div class="absolute bottom-1 left-1 bg-slate-900/80 text-white text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-sans">
               <i class="fa-solid fa-magnifying-glass-plus"></i> انقر للتكبير
             </div>
@@ -457,8 +591,10 @@ function renderQuestions(questions) {
       </div>
     `;
 
-    container.appendChild(card);
+    fragment.appendChild(card);
   });
+
+  container.appendChild(fragment);
 }
 
 function showQuestionImageModal(src) {
@@ -611,7 +747,8 @@ async function submitExam(statusReason) {
   };
 
   // 2. سجل المعاملات المحلي الفوري (Write-Ahead-Log - WAL) لضمان عدم ضياع أي إجابة تحت أي ظرف
-  const backupKey = `exam_wal_backup_${payload.student_id}_${payload.exam_id}`;
+  const studentIdentifier = payload.student_id ? payload.student_id : payload.student_password;
+  const backupKey = `exam_wal_backup_${studentIdentifier}_${payload.exam_id}`;
   try {
     localStorage.setItem(backupKey, JSON.stringify(payload));
   } catch (e) {}
@@ -622,10 +759,10 @@ async function submitExam(statusReason) {
 
 /**
  * خوارزمية طابور التسليم المقاومة للتصادم والضغط الشديد (Concurrent Queue with Jittered Exponential Backoff)
- * مصممة هندسياً لتحمل تسليم 300+ طالب في نفس اللحظة دون سقوط أي إجابة
+ * مصممة هندسياً لتحمل تسليم 300+ طالب في نفس اللحظة دون سقوط أي إجابة وتأكيد استلام الجميع
  */
 async function processSubmissionWithResilientQueue(payload, statusReason, backupKey) {
-  const MAX_RETRIES = 8;
+  const MAX_RETRIES = 20; // رفع عدد المحاولات إلى 20 لضمان تسجيل كل طالب مهما كان الضغط
   let attempt = 0;
   let isSuccess = false;
 
@@ -652,7 +789,7 @@ async function processSubmissionWithResilientQueue(payload, statusReason, backup
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000); // مهلة 25 ثانية لكل محاولة
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // مهلة 20 ثانية لكل محاولة
 
       const res = await fetch(API_URL, {
         method: 'POST',
@@ -664,10 +801,14 @@ async function processSubmissionWithResilientQueue(payload, statusReason, backup
       clearTimeout(timeoutId);
       const data = await res.json();
 
-      if (data && data.status === 'success') {
+      if (data && (data.status === 'success' || (data.message && data.message.includes('مسبقاً')))) {
         isSuccess = true;
-        // حذف النسخة الاحتياطية المحلية فور تأكيد الاستلام السحابي
-        try { localStorage.removeItem(backupKey); } catch (e) {}
+        // وسم إتمام وتسليم الامتحان للطالب محلياً لمنع أي محاولة إعادة دخول
+        const studentNorm = (payload.student_name || '').toLowerCase().replace(/[أإآء]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
+        try {
+          localStorage.setItem(`exam_done_${payload.exam_id}_${studentNorm}`, 'submitted_' + Date.now());
+          localStorage.removeItem(backupKey);
+        } catch (e) {}
 
         // إخفاء قاعة الامتحان والعودة للرئيسية
         document.getElementById('exam-room').classList.add('hidden');
@@ -722,8 +863,8 @@ async function processSubmissionWithResilientQueue(payload, statusReason, backup
 
     if (!isSuccess && attempt < MAX_RETRIES) {
       // خوارزمية التراجع العشوائي (Jittered Exponential Backoff) لفض التزاحم العادل بين الطلاب
-      const jitter = Math.random() * 800;
-      const delay = Math.min(1000 * Math.pow(1.35, attempt) + jitter, 5000);
+      const jitter = Math.random() * 600;
+      const delay = Math.min(800 * Math.pow(1.15, attempt) + jitter, 3500);
       await new Promise(r => setTimeout(r, delay));
     }
   }
@@ -798,66 +939,255 @@ function handleViolation(reason) {
   }
 }
 
-// حماية صارمة لمنع فتح الـ DevTools والقائمة أثناء دخول الطالب
+// ==========================================
+// 3.0 منظومة الحماية الصارمة ضد أدوات المطورين والكونسول (Anti-DevTools Protection)
+// ==========================================
+
+// فحص موثوق للأجهزة (لابتوب / كمبيوتر مكتبي / تابلت)
+function isLaptopOrTabletDevice() {
+  const ua = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+
+  // لابتوب أو كمبيوتر مكتبي (Windows, Mac, Linux x86, ChromeOS)
+  const isDesktop = /Windows|Macintosh|MacIntel|Linux x86|CrOS/i.test(ua) || 
+                    /Win32|Win64|MacIntel/i.test(platform);
+  if (isDesktop && !/Android/i.test(ua)) {
+    return true; // كمبيوتر مكتبي أو لابتوب
+  }
+
+  // تابلت (iPad أو أندرويد تابلت بدون كلمة Mobile أو شاشة لمس عريضة)
+  const isTablet = /iPad|Tablet|PlayBook|Silk/i.test(ua) || 
+                   (/Android/i.test(ua) && !/Mobile/i.test(ua)) ||
+                   (platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+                   (Math.min(window.screen.width, window.screen.height) >= 600);
+  if (isTablet) return true;
+
+  if (window.innerWidth >= 700) return true;
+
+  return false;
+}
+
+let isThreatAlertActive = false;
+let isSiteShutdown = false;
+
+// إغلاق الموقع بالكامل وعرض شاشة الحظر النهائي عند فتح أدوات المطورين
+function banUserAndShutdownSite(reason) {
+  if (isSiteShutdown) return;
+
+  const dashboard = document.getElementById('dashboard');
+  if (dashboard && !dashboard.classList.contains('hidden')) return; // استثناء لوحة الإدارة
+
+  isSiteShutdown = true;
+
+  // 1. إيقاف أي مؤقتات أو بث كاميرا أو جلسة نشطة
+  if (examTimer) clearInterval(examTimer);
+  if (cameraBroadcastInterval) clearInterval(cameraBroadcastInterval);
+  if (camAlertCheckInterval) clearInterval(camAlertCheckInterval);
+  isExamActive = false;
+
+  // 2. إغلاق ومحو محتوى الموقع بالكامل وعرض رسالة الحظر التام
+  try {
+    document.title = "تم حظر الوصول - تم رصد عملية اختراق";
+    document.body.innerHTML = `
+      <div style="position: fixed; inset: 0; width: 100vw; height: 100vh; background: radial-gradient(circle at center, #1e090f 0%, #060103 100%); color: #ffffff; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 2rem; font-family: 'Cairo', system-ui, sans-serif; box-sizing: border-box;">
+        <div style="width: 84px; height: 84px; background: rgba(225, 29, 72, 0.16); border: 2px solid #e11d48; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 1.5rem; color: #f43f5e; font-size: 3rem; box-shadow: 0 0 40px rgba(225, 29, 72, 0.45);">
+          <i class="fa-solid fa-ban"></i>
+        </div>
+        <h1 style="color: #f43f5e; font-size: 1.85rem; font-weight: 900; margin-bottom: 0.5rem; letter-spacing: -0.5px;">تم حظر الوصول إلى المنصة نهائياً</h1>
+        <h2 style="color: #ffffff; font-size: 1.2rem; font-weight: 700; margin-bottom: 1.2rem;">تم رصد عملية اختراق او عمل ضار</h2>
+        <p style="color: #fda4af; font-size: 1rem; max-width: 520px; line-height: 1.8; margin-bottom: 1.8rem;">
+          تم رصد تشغيل أدوات المطورين (Developer Tools / Console). لحماية سرية الأسئلة ونزاهة الاختبارات، تم إغلاق الموقع وحظر جلستك تماماً وتوثيق المحاولة.
+        </p>
+        <div style="background: rgba(0, 0, 0, 0.55); border: 1px dashed #e11d48; border-radius: 12px; padding: 0.9rem 1.6rem; color: #fecdd3; font-size: 0.88rem; font-weight: 600;">
+          <i class="fa-solid fa-triangle-exclamation" style="margin-left: 6px;"></i> رمز الحظر الأمني: SEC_DEVTOOLS_TERMINATED
+        </div>
+      </div>
+    `;
+  } catch(e) {}
+
+  // 3. إظهار نافذة الحظر غير القابلة للإغلاق
+  try {
+    Swal.fire({
+      title: 'تم رصد عملية اختراق او عمل ضار',
+      text: 'تم رصد تشغيل أدوات المطورين (Developer Tools). تم إغلاق المنصة وحظر الجلسة نهائياً لحماية أمان الاختبار.',
+      icon: 'error',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false
+    });
+  } catch(e) {}
+
+  // 4. تجميد شاشة الكونسول داخل DevTools بحلقة كاسر تصحيح مستمرة
+  setInterval(() => {
+    (function() {
+      return false;
+    }["constructor"]("debugger")());
+  }, 50);
+}
+
+// إظهار رسالة التهديد والتحذير الأمني عند محاولة استخدام اختصارات المطورين
+function triggerThreatAlert(reason) {
+  if (!isLaptopOrTabletDevice() || isSiteShutdown) return;
+
+  const dashboard = document.getElementById('dashboard');
+  if (dashboard && !dashboard.classList.contains('hidden')) return;
+
+  if (isThreatAlertActive) return;
+  isThreatAlertActive = true;
+
+  try {
+    console.clear();
+  } catch (e) {}
+
+  Swal.fire({
+    title: 'تم رصد عملية اختراق او عمل ضار',
+    text: reason || 'تم حظر أدوات المطورين والكونسول لحماية نزاهة الاختبار وسريته.',
+    icon: 'error',
+    confirmButtonText: 'حسناً، متابعة الاختبار',
+    confirmButtonColor: '#e11d48',
+    allowOutsideClick: false,
+    allowEscapeKey: false
+  }).then(() => {
+    isThreatAlertActive = false;
+  });
+
+  if (isExamActive) {
+    handleViolation('تم رصد عملية اختراق او عمل ضار (' + (reason || 'أدوات المطورين والكونسول') + ')');
+  }
+}
+
+// حماية صارمة لمنع فتح الـ DevTools والقائمة أثناء دخول الطالب والامتحان (خاص باللابتوب والتابلت)
 (function antiDevToolsSuite() {
   // 1. حظر الكليك يمين بالكامل في صفحة دخول الطالب والامتحان لمنع خيار Inspect
   document.addEventListener('contextmenu', e => {
-    // مسموح فقط إذا كان في لوحة الإدارة
-    const isDashboard = !document.getElementById('dashboard').classList.contains('hidden');
-    if (!isDashboard) {
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    }
+    if (!isLaptopOrTabletDevice()) return;
+    const dashboard = document.getElementById('dashboard');
+    if (dashboard && !dashboard.classList.contains('hidden')) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    triggerThreatAlert('تم حظر النقر بزر الفأرة الأيمن لمنع فحص العناصر أو الأكواد');
+    return false;
   }, true);
 
-  // 2. حظر مفاتيح المطورين واختصارات لوحة المفاتيح بشكل دائم في شاشة الطالب والامتحان
-  window.addEventListener('keydown', e => {
-    const isDashboard = !document.getElementById('dashboard').classList.contains('hidden');
-    if (isDashboard) return; // استثناء لوحة الإدارة
+  // 2. حظر مفاتيح المطورين واختصارات لوحة المفاتيح في مرحلة الـ Capture Phase
+  function interceptDevKeys(e) {
+    if (!isLaptopOrTabletDevice()) return;
+
+    const dashboard = document.getElementById('dashboard');
+    if (dashboard && !dashboard.classList.contains('hidden')) return;
 
     const key = e.key ? e.key.toLowerCase() : '';
+    const code = e.code ? e.code.toLowerCase() : '';
+    const keyCode = e.keyCode || e.which || 0;
     const isCtrlOrMeta = e.ctrlKey || e.metaKey;
 
-    // حظر F12 وحظر Ctrl+Shift+I / J / C وحظر Ctrl+U وحظر Ctrl+S
-    if (
-      e.key === 'F12' ||
-      e.keyCode === 123 ||
-      (isCtrlOrMeta && e.shiftKey && (key === 'i' || key === 'j' || key === 'c' || key === 'k')) ||
-      (isCtrlOrMeta && (key === 'u' || key === 's' || key === 'p'))
-    ) {
+    // حظر مفتاح F12
+    const isF12 = keyCode === 123 || key === 'f12' || code === 'f12';
+
+    // حظر اختصارات المطورين المشهورة: Ctrl+Shift+I / J / C / K / P (يدعم الإنجليزية والعربية)
+    const isDevShortcut = (
+      (isCtrlOrMeta && e.shiftKey && (
+        code === 'keyi' || keyCode === 73 || key === 'i' || key === 'ه' ||
+        code === 'keyj' || keyCode === 74 || key === 'j' || key === 'ت' ||
+        code === 'keyc' || keyCode === 67 || key === 'c' || key === 'ؤ' ||
+        code === 'keyk' || keyCode === 75 || key === 'k' || key === 'ن' ||
+        code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
+      )) ||
+      (isCtrlOrMeta && (
+        code === 'keyu' || keyCode === 85 || key === 'u' || key === 'ع' ||
+        code === 'keys' || keyCode === 83 || key === 's' || key === 'س' ||
+        code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
+      )) ||
+      (e.metaKey && e.altKey && ['i', 'j', 'c'].includes(key))
+    );
+
+    // حظر رموز وأدوات فحص العناصر < و >
+    const isAngleBracket = (
+      key === '<' || key === '>' || key === '،' ||
+      (e.shiftKey && (code === 'comma' || code === 'period' || keyCode === 188 || keyCode === 190))
+    );
+
+    const isMenuKey = keyCode === 93 || (e.shiftKey && (keyCode === 121 || key === 'f10'));
+
+    if (isF12 || isDevShortcut || isAngleBracket || isMenuKey) {
       e.preventDefault();
       e.stopPropagation();
-      Swal.fire({
-        title: 'إجراء محظور أمنياً!',
-        text: 'تم تعطيل أدوات المطورين (Developer Tools) لحماية نزاهة الاختبار.',
-        icon: 'error',
-        timer: 2000,
-        showConfirmButton: false
-      });
+      e.stopImmediatePropagation();
+      triggerThreatAlert(
+        isAngleBracket 
+          ? 'تم رصد محاولة استخدام رموز وأدوات فحص العناصر (< >)' 
+          : 'تم رصد محاولة استخدام اختصارات أدوات المطورين والكونسول (F12 / DevTools)'
+      );
       return false;
     }
-  }, true);
+  }
 
-  // 3. تعطيل شاشة الـ Console كلياً وتفريغها لمنع حقن أي كود
+  ['keydown', 'keyup'].forEach(eventType => {
+    window.addEventListener(eventType, interceptDevKeys, { capture: true, passive: false });
+    document.addEventListener(eventType, interceptDevKeys, { capture: true, passive: false });
+  });
+
+  // 3. تعطيل شاشة الـ Console كلياً وتفريغها لمنع حقن أي كود أو رؤية المتغيرات
   try {
     const dummyFn = function () {};
-    ['log', 'debug', 'info', 'warn', 'error', 'table', 'trace', 'dir'].forEach(method => {
-      console[method] = dummyFn;
+    ['log', 'debug', 'info', 'warn', 'error', 'table', 'trace', 'dir', 'dirxml', 'group', 'groupCollapsed', 'groupEnd', 'clear', 'time', 'timeEnd', 'count', 'profile', 'assert'].forEach(method => {
+      try {
+        Object.defineProperty(console, method, {
+          value: dummyFn,
+          writable: false,
+          configurable: false
+        });
+      } catch (err) {
+        console[method] = dummyFn;
+      }
     });
   } catch (err) {}
 
-  // 4. تقنية كشف فتح الـ DevTools عبر كاسر التصحيح (Debugger Trap) أثناء الاختبار
+  // مسح الكونسول دورياً على اللابتوب والتابلت
   setInterval(() => {
-    if (isExamActive) {
-      const startTime = performance.now();
-      debugger;
-      const endTime = performance.now();
-      if (endTime - startTime > 100) {
-        handleViolation('محاولة فتح أدوات فحص المطورين Console/DevTools');
-      }
+    if (isLaptopOrTabletDevice() && !isSiteShutdown) {
+      try {
+        console.clear();
+      } catch (e) {}
     }
   }, 1000);
+
+  // 4. تقنية كشف فتح الـ DevTools وإغلاق الموقع فوراً إذا نجح المستخدم في فتحها بأي طريقة
+  function checkDevToolsOpened() {
+    if (!isLaptopOrTabletDevice() || isSiteShutdown) return;
+
+    const dashboard = document.getElementById('dashboard');
+    if (dashboard && !dashboard.classList.contains('hidden')) return; // استثناء لوحة الإدارة
+
+    // فارق الأبعاد: شريط المتصفح العلوي 90-140px. إذا فتح DevTools متصلة يصبح الفارق > 200px أفقياً أو > 280px رأسياً
+    const widthDiff = window.outerWidth - window.innerWidth;
+    const heightDiff = window.outerHeight - window.innerHeight;
+    if (widthDiff > 200 || heightDiff > 280) {
+      banUserAndShutdownSite('تم رصد فتح شاشة أدوات المطورين (DevTools)');
+    }
+  }
+
+  // تفعيل الكشف بعد استقرار الصفحة (1.2 ثانية) لمنع أي تداخل أولي
+  setTimeout(() => {
+    window.addEventListener('resize', checkDevToolsOpened);
+    setInterval(checkDevToolsOpened, 800);
+  }, 1200);
+
+  // فخ كائن الكونسول لاكتشاف النوافذ المنفصلة (Undocked DevTools)
+  try {
+    const devtoolsObjectTrap = /./;
+    devtoolsObjectTrap.toString = function() {
+      if (isLaptopOrTabletDevice() && !isSiteShutdown) {
+        const dashboard = document.getElementById('dashboard');
+        if (!dashboard || dashboard.classList.contains('hidden')) {
+          banUserAndShutdownSite('تم رصد فحص الكونسول وأدوات المطورين');
+        }
+      }
+      return '';
+    };
+  } catch(e) {}
 })();
 
 document.addEventListener('keydown', e => {
@@ -873,17 +1203,28 @@ document.addEventListener('keydown', e => {
     return false;
   }
 
+  const isAngleBracket = (
+    key === '<' || key === '>' ||
+    e.key === '<' || e.key === '>' ||
+    (e.shiftKey && (e.code === 'Comma' || e.code === 'Period' || e.keyCode === 188 || e.keyCode === 190))
+  );
+
   if (
+    isAngleBracket ||
     e.key === 'F12' ||
     e.key === 'PrintScreen' ||
     e.key === 'Escape' ||
     (isCtrlOrMeta && ['c', 'v', 'x', 'u', 's', 'p', 'a'].includes(key)) ||
-    (isCtrlOrMeta && e.shiftKey && ['i', 'j', 'c'].includes(key)) ||
+    (isCtrlOrMeta && e.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) ||
     (e.altKey && e.key === 'Tab')
   ) {
     e.preventDefault();
     e.stopPropagation();
-    handleViolation('استخدام اختصار محظور');
+    if (isLaptopOrTabletDevice() && (isAngleBracket || e.key === 'F12' || (isCtrlOrMeta && e.shiftKey))) {
+      triggerThreatAlert('تم رصد محاولة استخدام اختصارات أو رموز محظورة (< > / F12 / DevTools)');
+    } else {
+      handleViolation('استخدام اختصار محظور');
+    }
     return false;
   }
 });
@@ -986,6 +1327,59 @@ document.addEventListener('fullscreenchange', () => {
     handleReturnFromBlur('الخروج من وضع ملء الشاشة');
   }
 });
+
+// منع مغادرة أو تحديث صفحة الامتحان (الدخول لمرة واحدة فقط لعند ما يسلم)
+window.addEventListener('beforeunload', (e) => {
+  if (isExamActive) {
+    e.preventDefault();
+    e.returnValue = 'تحذير أمني: الخروج من صفحة الامتحان أو تحديثها سيؤدي إلى إنهاء جلستك ورصد إجاباتك ولن تتمكن من الدخول مرة أخرى!';
+    return e.returnValue;
+  }
+});
+
+// إذا قام الطالب بإغلاق المتصفح أو مغادرة الصفحة بالقوة، يتم حفظ ورصد الإجابات فوراً وإنهاء الجلسة
+window.addEventListener('pagehide', () => {
+  if (isExamActive && currentExam) {
+    autoSubmitExamOnExit('إنهاء الجلسة بسبب إغلاق المتصفح أو مغادرة صفحة الامتحان قبل التسليم');
+  }
+});
+
+function autoSubmitExamOnExit(reason) {
+  if (!isExamActive || !currentExam) return;
+  isExamActive = false;
+
+  const answers = {};
+  if (currentExam.questions) {
+    currentExam.questions.forEach(q => {
+      const selected = document.querySelector(`input[name="q_${q.index}"]:checked`);
+      if (selected) answers[q.index] = selected.value;
+    });
+  }
+
+  const payload = {
+    action: 'submit_exam',
+    exam_id: currentExam.exam_id,
+    student_name: currentExam.student_name,
+    student_id: currentExam.student_id,
+    student_grade: currentExam.student_grade,
+    student_branch: currentExam.student_branch,
+    student_password: currentExam.student_password,
+    answers: answers,
+    cheat_status: reason || 'مغادرة صفحة الامتحان قبل التسليم',
+    client_timestamp: Date.now()
+  };
+
+  const studentNorm = (currentExam.student_name || '').toLowerCase().replace(/[أإآء]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
+  try {
+    localStorage.setItem(`exam_done_${currentExam.exam_id}_${studentNorm}`, 'submitted_' + Date.now());
+    const studentIdentifier = payload.student_id || payload.student_password;
+    localStorage.setItem(`exam_wal_backup_${studentIdentifier}_${payload.exam_id}`, JSON.stringify(payload));
+  } catch (e) {}
+
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(API_URL, JSON.stringify(payload));
+  }
+}
 
 function createBlackoutOverlayDOM() {
   if (!blackoutOverlay) {
@@ -1162,7 +1556,8 @@ function createSecurityWatermark(name, id) {
   const wm = document.createElement('div');
   wm.id = 'exam-security-watermark';
   wm.className = 'exam-security-watermark';
-  const text = `الطالب: ${escapeHTML(name)} | ID: ${escapeHTML(id)} | اختبار محمي`;
+  const idText = id ? ` | ID: ${escapeHTML(id)}` : '';
+  const text = `الطالب: ${escapeHTML(name)}${idText} | اختبار محمي`;
   let items = '';
   for (let i = 0; i < 28; i++) {
     items += `<div class="watermark-item">${text}</div>`;

@@ -11,26 +11,142 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+
+  <!-- تطبيق فوري للوضع الليلي / النهاري قبل تحميل الصفحة لمنع الوميض -->
+  <script>
+    (function() {
+      try {
+        const savedTheme = localStorage.getItem('app_theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const currentTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', currentTheme);
+        if (currentTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
+
+  <!-- حماية فورية مطلقة تبدأ من اللحظة الأولى في الرأس لمنع أدوات المطورين والكونسول -->
+  <script>
+    (function() {
+      // 1. تفريغ شاشة الكونسول وإلغاء دوالها من البداية
+      try {
+        const noop = function() {};
+        ['log', 'debug', 'info', 'warn', 'error', 'table', 'trace', 'dir', 'dirxml', 'group', 'groupCollapsed', 'groupEnd', 'clear', 'time', 'timeEnd', 'count', 'profile', 'assert'].forEach(function(m) {
+          try {
+            Object.defineProperty(console, m, { value: noop, writable: false, configurable: false });
+          } catch(e) {
+            console[m] = noop;
+          }
+        });
+      } catch(e) {}
+
+      // 2. حظر مفاتيح المطورين F12 و Ctrl+Shift+I و < > باللغتين العربية والإنجليزية
+      function blockDevToolsEarly(e) {
+        const code = (e.code || '').toLowerCase();
+        const key = (e.key || '').toLowerCase();
+        const keyCode = e.keyCode || e.which || 0;
+        const isCtrl = e.ctrlKey || e.metaKey;
+
+        const isF12 = keyCode === 123 || key === 'f12' || code === 'f12';
+
+        const isDevShortcut = (isCtrl && e.shiftKey && (
+          code === 'keyi' || keyCode === 73 || key === 'i' || key === 'ه' ||
+          code === 'keyj' || keyCode === 74 || key === 'j' || key === 'ت' ||
+          code === 'keyc' || keyCode === 67 || key === 'c' || key === 'ؤ' ||
+          code === 'keyk' || keyCode === 75 || key === 'k' || key === 'ن' ||
+          code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
+        ));
+
+        const isSourceOrSave = isCtrl && (
+          code === 'keyu' || keyCode === 85 || key === 'u' || key === 'ع' ||
+          code === 'keys' || keyCode === 83 || key === 's' || key === 'س' ||
+          code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
+        );
+
+        const isAngle = (
+          key === '<' || key === '>' || key === '،' ||
+          (e.shiftKey && (code === 'comma' || code === 'period' || keyCode === 188 || keyCode === 190))
+        );
+
+        const isMenuKey = keyCode === 93 || (e.shiftKey && (keyCode === 121 || key === 'f10'));
+
+        if (isF12 || isDevShortcut || isSourceOrSave || isAngle || isMenuKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (typeof Swal !== 'undefined') {
+            Swal.fire({
+              title: 'تم رصد عملية اختراق او عمل ضار',
+              text: 'تم حظر أدوات المطورين والكونسول لحماية نزاهة الاختبار وسريته.',
+              icon: 'error',
+              confirmButtonText: 'حسناً',
+              confirmButtonColor: '#e11d48'
+            });
+          }
+          return false;
+        }
+      }
+
+      ['keydown', 'keyup'].forEach(function(evt) {
+        window.addEventListener(evt, blockDevToolsEarly, { capture: true, passive: false });
+        document.addEventListener(evt, blockDevToolsEarly, { capture: true, passive: false });
+      });
+
+      document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (typeof Swal !== 'undefined') {
+          Swal.fire({
+            title: 'تم رصد عملية اختراق او عمل ضار',
+            text: 'تم حظر النقر بزر الفأرة الأيمن لمنع فحص العناصر.',
+            icon: 'error',
+            confirmButtonText: 'حسناً',
+            confirmButtonColor: '#e11d48'
+          });
+        }
+        return false;
+      }, true);
+    })();
+  </script>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
 
   <!-- الشريط العلوي -->
   <header class="nav-header">
-    <div class="max-w-6xl mx-auto px-4 py-3.5 flex justify-between items-center">
-      <div class="flex items-center gap-3">
-        <span class="brand-badge" style="background:#e0f2fe; color:#0284c7;">
-          <i class="fa-solid fa-chalkboard-user"></i>
-        </span>
-        <div>
-          <h1 class="text-base font-bold text-slate-900 leading-tight">بوابة عضو هيئة التدريس</h1>
-          <p class="text-xs text-slate-500">نظام إعداد وإدارة الاختبارات الإلكترونية</p>
+    <div class="max-w-6xl mx-auto px-3.5 md:px-4 py-2.5 md:py-3.5 flex flex-col md:flex-row justify-between items-center gap-2.5 md:gap-4">
+      <div class="flex items-center justify-between w-full md:w-auto">
+        <div class="flex items-center gap-2.5">
+          <span class="brand-badge" style="background:#e0f2fe; color:#0284c7;">
+            <i class="fa-solid fa-chalkboard-user"></i>
+          </span>
+          <div>
+            <h1 class="text-sm md:text-base font-bold text-slate-900 leading-tight">بوابة عضو هيئة التدريس</h1>
+            <p class="text-[10px] md:text-xs text-slate-500">نظام إعداد وإدارة الاختبارات الإلكترونية</p>
+          </div>
         </div>
-      </div>
-      <div id="faculty-nav-actions" class="hidden flex items-center gap-3">
-        <span id="faculty-name-badge" class="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200"></span>
-        <button onclick="facultyLogout()" class="btn btn-outline text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50">
-          <i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج
+        <button onclick="toggleTheme()" class="theme-toggle-btn md:hidden" title="تبديل الوضع (نهاري / ليلي)" aria-label="تبديل الوضع الليلي والنهاري">
+          <i class="fa-solid fa-moon"></i>
         </button>
+      </div>
+
+      <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+        <button onclick="toggleTheme()" class="theme-toggle-btn hidden md:inline-flex" title="تبديل الوضع (نهاري / ليلي)" aria-label="تبديل الوضع الليلي والنهاري">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+        <a href="index.html" class="btn btn-outline text-xs">
+          <i class="fa-solid fa-house"></i> بوابة الطلاب
+        </a>
+        <div id="faculty-nav-actions" class="hidden flex items-center gap-2">
+          <span id="faculty-name-badge" class="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200"></span>
+          <button onclick="facultyLogout()" class="btn btn-outline text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i> خروج
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -56,7 +172,12 @@
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1.5">كلمة المرور</label>
-            <input type="password" id="faculty-pass" required class="input-field" placeholder="••••••••">
+            <div class="password-wrapper">
+              <input type="password" id="faculty-pass" required class="input-field" placeholder="••••••••">
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('faculty-pass', this)" title="إظهار / إخفاء كلمة المرور" aria-label="إظهار أو إخفاء كلمة المرور">
+                <i class="fa-regular fa-eye"></i>
+              </button>
+            </div>
           </div>
           <button type="submit" class="btn btn-primary w-full py-2.5 mt-2 text-sm font-bold" style="background:#0284c7;">
             دخول صفحة إعداد الاختبار <i class="fa-solid fa-arrow-left mr-1"></i>
@@ -240,7 +361,7 @@
     بوابة عضو هيئة التدريس &copy; 2026 - نظام الاختبارات الإلكترونية المحمي
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2.9.0"></script>
   <script>
     // تفعيل فحص جلسة المعلم عند فتح الصفحة
     document.addEventListener('DOMContentLoaded', () => {

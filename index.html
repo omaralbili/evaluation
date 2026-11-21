@@ -14,30 +14,160 @@
 
   <!-- ملف التصميم المخصص والمنفصل -->
   <link rel="stylesheet" href="style.css">
+
+  <!-- تطبيق فوري للوضع الليلي / النهاري قبل تحميل الصفحة لمنع الوميض -->
+  <script>
+    (function() {
+      try {
+        const savedTheme = localStorage.getItem('app_theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const currentTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', currentTheme);
+        if (currentTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
+
+  <!-- حماية فورية مطلقة تبدأ من اللحظة الأولى في الرأس لمنع أدوات المطورين والكونسول -->
+  <script>
+    (function() {
+      // 1. تفريغ شاشة الكونسول وإلغاء دوالها من البداية
+      try {
+        const noop = function() {};
+        ['log', 'debug', 'info', 'warn', 'error', 'table', 'trace', 'dir', 'dirxml', 'group', 'groupCollapsed', 'groupEnd', 'clear', 'time', 'timeEnd', 'count', 'profile', 'assert'].forEach(function(m) {
+          try {
+            Object.defineProperty(console, m, { value: noop, writable: false, configurable: false });
+          } catch(e) {
+            console[m] = noop;
+          }
+        });
+      } catch(e) {}
+
+      // 2. حظر مفاتيح المطورين F12 و Ctrl+Shift+I و < > باللغتين العربية والإنجليزية
+      function blockDevToolsEarly(e) {
+        const dash = document.getElementById('dashboard');
+        if (dash && !dash.classList.contains('hidden')) return;
+
+        const code = (e.code || '').toLowerCase();
+        const key = (e.key || '').toLowerCase();
+        const keyCode = e.keyCode || e.which || 0;
+        const isCtrl = e.ctrlKey || e.metaKey;
+
+        // F12
+        const isF12 = keyCode === 123 || key === 'f12' || code === 'f12';
+
+        // Ctrl+Shift+I / J / C / K / P (يدعم الكيبورد العربي والإنجليزي)
+        const isDevShortcut = (isCtrl && e.shiftKey && (
+          code === 'keyi' || keyCode === 73 || key === 'i' || key === 'ه' ||
+          code === 'keyj' || keyCode === 74 || key === 'j' || key === 'ت' ||
+          code === 'keyc' || keyCode === 67 || key === 'c' || key === 'ؤ' ||
+          code === 'keyk' || keyCode === 75 || key === 'k' || key === 'ن' ||
+          code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
+        ));
+
+        // عرض السورس وحفظ الصفحة Ctrl+U و Ctrl+S و Ctrl+P
+        const isSourceOrSave = isCtrl && (
+          code === 'keyu' || keyCode === 85 || key === 'u' || key === 'ع' ||
+          code === 'keys' || keyCode === 83 || key === 's' || key === 'س' ||
+          code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
+        );
+
+        // رموز < و >
+        const isAngle = (
+          key === '<' || key === '>' || key === '،' ||
+          (e.shiftKey && (code === 'comma' || code === 'period' || keyCode === 188 || keyCode === 190))
+        );
+
+        // قائمة الماوس بالكيبورد (Shift+F10 أو مفتاح القائمة)
+        const isMenuKey = keyCode === 93 || (e.shiftKey && (keyCode === 121 || key === 'f10'));
+
+        if (isF12 || isDevShortcut || isSourceOrSave || isAngle || isMenuKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (typeof triggerThreatAlert === 'function') {
+            triggerThreatAlert(isAngle ? 'تم رصد محاولة استخدام رموز فحص العناصر (< >)' : 'تم رصد محاولة استخدام اختصارات أدوات المطورين');
+          } else if (typeof Swal !== 'undefined') {
+            Swal.fire({
+              title: 'تم رصد عملية اختراق او عمل ضار',
+              text: 'تم حظر أدوات المطورين والكونسول لحماية نزاهة الاختبار وسريته.',
+              icon: 'error',
+              confirmButtonText: 'حسناً، متابعة الاختبار',
+              confirmButtonColor: '#e11d48'
+            });
+          }
+          return false;
+        }
+      }
+
+      ['keydown', 'keyup'].forEach(function(evt) {
+        window.addEventListener(evt, blockDevToolsEarly, { capture: true, passive: false });
+        document.addEventListener(evt, blockDevToolsEarly, { capture: true, passive: false });
+      });
+
+      // 3. حظر النقر بزر الفأرة الأيمن فوراً
+      document.addEventListener('contextmenu', function(e) {
+        const dash = document.getElementById('dashboard');
+        if (dash && !dash.classList.contains('hidden')) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (typeof triggerThreatAlert === 'function') {
+          triggerThreatAlert('تم حظر النقر بزر الفأرة الأيمن لمنع فحص العناصر');
+        } else if (typeof Swal !== 'undefined') {
+          Swal.fire({
+            title: 'تم رصد عملية اختراق او عمل ضار',
+            text: 'تم حظر النقر بزر الفأرة الأيمن لمنع فحص العناصر.',
+            icon: 'error',
+            confirmButtonText: 'حسناً',
+            confirmButtonColor: '#e11d48'
+          });
+        }
+        return false;
+      }, true);
+    })();
+  </script>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
 
   <!-- شريط الملاحة العلوي -->
   <header id="navbar" class="nav-header">
-    <div class="max-w-6xl mx-auto px-4 py-3.5 flex justify-between items-center">
-      <div class="flex items-center gap-3">
-        <span class="brand-badge">
-          <i class="fa-solid fa-shield-halved"></i>
-        </span>
-        <div>
-          <h1 class="text-base font-bold text-slate-900 leading-tight">منصة الاختبارات الذكية</h1>
-          <p class="text-xs text-slate-500">نظام التقييم الإلكتروني المحمي</p>
+    <div class="max-w-6xl mx-auto px-3.5 md:px-4 py-2.5 md:py-3.5 flex flex-col md:flex-row justify-between items-center gap-2.5 md:gap-4">
+      <!-- الجزء العلوي: الشعار والعنوان وزر الوضع الليلي في الموبايل -->
+      <div class="flex items-center justify-between w-full md:w-auto">
+        <div class="flex items-center gap-2.5">
+          <span class="brand-badge">
+            <i class="fa-solid fa-shield-halved"></i>
+          </span>
+          <div>
+            <h1 class="text-sm md:text-base font-bold text-slate-900 leading-tight">منصة الاختبارات الذكية</h1>
+            <p class="text-[10px] md:text-xs text-slate-500">نظام التقييم الإلكتروني المحمي</p>
+          </div>
         </div>
+        <!-- زر الوضع الليلي على الموبايل في أعلى اليسار بجانب الشعار بشكل متناسق ومريح للعين -->
+        <button onclick="toggleTheme()" class="theme-toggle-btn md:hidden" title="تبديل الوضع (نهاري / ليلي)" aria-label="تبديل الوضع الليلي والنهاري">
+          <i class="fa-solid fa-moon"></i>
+        </button>
       </div>
-      <div class="flex items-center gap-2">
+
+      <!-- مصفوفة الأزرار: منظمة بنظام Segmented Tabs على الهاتف لتكون متناسقة ومريحة للمستخدم -->
+      <div class="nav-buttons-container flex items-center gap-1.5 md:gap-2 w-full md:w-auto">
+        <button onclick="toggleTheme()" class="theme-toggle-btn hidden md:inline-flex" title="تبديل الوضع (نهاري / ليلي)" aria-label="تبديل الوضع الليلي والنهاري">
+          <i class="fa-solid fa-moon"></i>
+        </button>
         <button onclick="showSection('student-login')" class="btn btn-outline text-xs">
-          <i class="fa-solid fa-graduation-cap"></i> بوابة الطالب
+          <i class="fa-solid fa-graduation-cap"></i> <span>بوابة الطالب</span>
         </button>
         <a href="faculty.html" class="btn btn-outline text-xs text-sky-700 border-sky-300 hover:bg-sky-50">
-          <i class="fa-solid fa-chalkboard-user"></i> بوابة عضو هيئة التدريس
+          <i class="fa-solid fa-chalkboard-user"></i> <span>هيئة التدريس</span>
         </a>
         <button onclick="showSection('admin-login')" class="btn btn-primary text-xs">
-          <i class="fa-solid fa-shield-halved"></i> الإدارة العامة
+          <i class="fa-solid fa-shield-halved"></i> <span>الإدارة العامة</span>
         </button>
       </div>
     </div>
@@ -94,8 +224,8 @@
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1.5">الرقم التعريفي / الجامعي (ID)</label>
-              <input type="text" id="st-id" required class="input-field font-mono" placeholder="مثال: 20261045">
+              <label class="block text-xs font-bold text-slate-700 mb-1.5">الرقم التعريفي / الجامعي (اختياري)</label>
+              <input type="text" id="st-id" class="input-field font-mono" placeholder="مثال: 20261045 (اختياري)">
             </div>
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1.5">كود الاختبار المعتمد</label>
@@ -105,7 +235,12 @@
 
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1.5">كلمة المرور الخاصة بالطالب</label>
-            <input type="password" id="st-password" required class="input-field font-mono" placeholder="اكتب كلمة المرور الخاصة بك الممنوحة لك...">
+            <div class="password-wrapper">
+              <input type="password" id="st-password" required class="input-field font-mono" placeholder="اكتب كلمة المرور الخاصة بك الممنوحة لك...">
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('st-password', this)" title="إظهار / إخفاء كلمة المرور" aria-label="إظهار أو إخفاء كلمة المرور">
+                <i class="fa-regular fa-eye"></i>
+              </button>
+            </div>
           </div>
 
           <button type="submit" class="btn btn-primary w-full py-3 mt-2 text-sm font-bold">
@@ -124,6 +259,10 @@
             <span id="student-info-display" class="text-[11px] md:text-xs text-slate-500 font-medium block truncate"></span>
           </div>
           <div class="flex items-center flex-wrap gap-2">
+            <!-- زر تبديل الوضع الليلي والنهاري أثناء أداء الامتحان -->
+            <button onclick="toggleTheme()" class="theme-toggle-btn text-xs" title="تبديل الوضع (نهاري / ليلي)" aria-label="تبديل الوضع الليلي والنهاري">
+              <i class="fa-solid fa-moon"></i>
+            </button>
             <!-- زر الكاميرا للطالب للتحكم في البث المباشر والمراقبة -->
             <button id="student-camera-btn" onclick="toggleStudentCamera()" class="btn btn-outline text-xs font-bold px-2.5 py-1.5 text-slate-700">
               <i id="student-camera-icon" class="fa-solid fa-video-slash text-slate-400"></i>
@@ -181,7 +320,12 @@
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1.5">كلمة المرور</label>
-            <input type="password" id="adm-pass" required class="input-field" placeholder="••••••••">
+            <div class="password-wrapper">
+              <input type="password" id="adm-pass" required class="input-field" placeholder="••••••••">
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('adm-pass', this)" title="إظهار / إخفاء كلمة المرور" aria-label="إظهار أو إخفاء كلمة المرور">
+                <i class="fa-regular fa-eye"></i>
+              </button>
+            </div>
           </div>
           <button type="submit" class="btn btn-primary w-full py-2.5 mt-2 text-sm font-bold">
             تسجيل الدخول <i class="fa-solid fa-arrow-left mr-1"></i>
@@ -203,7 +347,10 @@
             <span id="dash-role-badge" class="badge badge-primary text-[11px] mt-0.5">مدير عام</span>
           </div>
         </div>
-        <div class="flex gap-2">
+        <div class="flex items-center gap-2">
+          <button onclick="toggleTheme()" class="theme-toggle-btn text-xs" title="تبديل الوضع (نهاري / ليلي)" aria-label="تبديل الوضع الليلي والنهاري">
+            <i class="fa-solid fa-moon"></i>
+          </button>
           <button onclick="loadDashboardData()" class="btn btn-outline text-xs">
             <i class="fa-solid fa-arrows-rotate"></i> تحديث النتائج
           </button>
@@ -418,6 +565,6 @@
     منظومة الامتحانات الذكية المؤمنة &copy; 2026 - نظام تقييم إلكتروني محمي ومتكامل
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2.9.0"></script>
 </body>
 </html>

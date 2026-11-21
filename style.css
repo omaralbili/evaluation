@@ -43,6 +43,320 @@
   --transition-smooth: 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ==========================================================================
+   الوضع الليلي المتطور والراقي (Dark Mode Palette & Overrides)
+   ========================================================================== */
+html[data-theme="dark"],
+html.dark {
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-light: rgba(59, 130, 246, 0.16);
+  --primary-ring: rgba(59, 130, 246, 0.35);
+
+  --slate-900: #f8fafc;
+  --slate-800: #f1f5f9;
+  --slate-700: #e2e8f0;
+  --slate-600: #cbd5e1;
+  --slate-500: #94a3b8;
+  --slate-400: #64748b;
+  --slate-200: #243248;
+  --slate-100: #1a2436;
+  --slate-50:  #0b0f19;
+
+  --border-subtle: 1px solid #222f46;
+  --shadow-subtle: 0 1px 3px 0 rgba(0, 0, 0, 0.35);
+  --shadow-floating: 0 6px 18px -2px rgba(0, 0, 0, 0.5);
+
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] body,
+html.dark body {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .nav-header,
+html.dark .nav-header {
+  background: rgba(17, 24, 39, 0.92) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid #1e293b !important;
+}
+
+html[data-theme="dark"] .app-card,
+html.dark .app-card {
+  background: #141c2e !important;
+  border-color: #243048 !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.45) !important;
+}
+
+html[data-theme="dark"] .question-card,
+html.dark .question-card {
+  background: #141c2e !important;
+  border-color: #243048 !important;
+}
+
+html[data-theme="dark"] .question-card:focus-within,
+html.dark .question-card:focus-within {
+  border-color: #3b82f6 !important;
+}
+
+html[data-theme="dark"] .option-label,
+html.dark .option-label {
+  background-color: #0d1424 !important;
+  border-color: #222e44 !important;
+  color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .option-label:hover,
+html.dark .option-label:hover {
+  background-color: #1a253a !important;
+  border-color: #3b82f6 !important;
+}
+
+html[data-theme="dark"] .option-label.is-selected,
+html.dark .option-label.is-selected {
+  background-color: rgba(59, 130, 246, 0.18) !important;
+  border-color: #3b82f6 !important;
+  color: #93c5fd !important;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4) !important;
+}
+
+html[data-theme="dark"] .input-field,
+html.dark .input-field {
+  background-color: #0b1120 !important;
+  border-color: #26354d !important;
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .input-field:focus,
+html.dark .input-field:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25) !important;
+}
+
+html[data-theme="dark"] select.input-field option,
+html.dark select.input-field option {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .btn-outline,
+html.dark .btn-outline {
+  background-color: #141c2e !important;
+  border-color: #2a3852 !important;
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .btn-outline:hover,
+html.dark .btn-outline:hover {
+  background-color: #1e2a42 !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="dark"] .clean-table,
+html.dark .clean-table {
+  background-color: #141c2e !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .clean-table th,
+html.dark .clean-table th {
+  background-color: #0b1120 !important;
+  color: #94a3b8 !important;
+  border-bottom-color: #243048 !important;
+}
+
+html[data-theme="dark"] .clean-table td,
+html.dark .clean-table td {
+  border-bottom-color: #1c263b !important;
+  color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .clean-table tr:hover td,
+html.dark .clean-table tr:hover td {
+  background-color: #1a253a !important;
+}
+
+html[data-theme="dark"] .timer-chip,
+html.dark .timer-chip {
+  background-color: #0f172a !important;
+  border-color: #26354d !important;
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] #exam-room,
+html.dark #exam-room {
+  background-color: #0b0f19 !important;
+}
+
+html[data-theme="dark"] #exam-room .sticky,
+html.dark #exam-room .sticky {
+  background-color: #0f172a !important;
+  border-bottom-color: #1e293b !important;
+}
+
+html[data-theme="dark"] .exam-progress-bar,
+html.dark .exam-progress-bar {
+  background-color: #1e293b !important;
+}
+
+html[data-theme="dark"] .alert-warning,
+html.dark .alert-warning {
+  background-color: #241705 !important;
+  border-color: #59390a !important;
+  color: #fde68a !important;
+}
+
+html[data-theme="dark"] .alert-danger,
+html.dark .alert-danger {
+  background-color: #260a12 !important;
+  border-color: #5c1425 !important;
+  color: #fecdd3 !important;
+}
+
+/* التجاوب مع عناصر Tailwind بالوضع الليلي */
+html[data-theme="dark"] .bg-white,
+html.dark .bg-white {
+  background-color: #141c2e !important;
+}
+
+html[data-theme="dark"] .bg-slate-50,
+html.dark .bg-slate-50 {
+  background-color: #0b0f19 !important;
+}
+
+html[data-theme="dark"] .bg-slate-100,
+html.dark .bg-slate-100 {
+  background-color: #1a2436 !important;
+}
+
+html[data-theme="dark"] .text-slate-900,
+html.dark .text-slate-900 {
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .text-slate-800,
+html.dark .text-slate-800 {
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .text-slate-700,
+html.dark .text-slate-700 {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .text-slate-600,
+html.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .text-slate-500,
+html.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .border-slate-200,
+html.dark .border-slate-200 {
+  border-color: #243048 !important;
+}
+
+html[data-theme="dark"] .border-slate-100,
+html.dark .border-slate-100 {
+  border-color: #1e293b !important;
+}
+
+/* تنسيق SweetAlert2 في الوضع الليلي */
+html[data-theme="dark"] .swal2-popup,
+html.dark .swal2-popup {
+  background: #141c2e !important;
+  color: #f8fafc !important;
+  border: 1px solid #243048 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7) !important;
+}
+
+html[data-theme="dark"] .swal2-title,
+html.dark .swal2-title {
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .swal2-html-container,
+html.dark .swal2-html-container {
+  color: #cbd5e1 !important;
+}
+
+/* زر التبديل بين الوضع الليلي والنهاري */
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--slate-200);
+  background: #ffffff;
+  color: var(--slate-700);
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  font-size: 0.95rem;
+  box-shadow: var(--shadow-subtle);
+}
+
+.theme-toggle-btn:hover {
+  transform: translateY(-1px) scale(1.05);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+html[data-theme="dark"] .theme-toggle-btn,
+html.dark .theme-toggle-btn {
+  background: #141c2e !important;
+  border-color: #2a3852 !important;
+  color: #fbbf24 !important;
+}
+
+html[data-theme="dark"] .theme-toggle-btn:hover,
+html.dark .theme-toggle-btn:hover {
+  border-color: #fbbf24 !important;
+  color: #fef08a !important;
+}
+
+/* ميزات تحسين الأداء و Lazy Loading */
+img[loading="lazy"] {
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* شريط تمرير أنيق ونحيف */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb,
+html.dark ::-webkit-scrollbar-thumb {
+  background: #2b3952;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover,
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3b4e70;
+}
+
 /* التنسيقات العامة */
 * {
   box-sizing: border-box;
@@ -120,6 +434,52 @@ body {
   border-color: var(--primary);
   background: #ffffff;
   box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
+/* حاوية حقول كلمات المرور مع زر إظهار/إخفاء كلمة المرور (العين) */
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-wrapper .input-field {
+  padding-left: 2.75rem !important;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--slate-400);
+  cursor: pointer;
+  padding: 0.35rem;
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition-fast);
+  z-index: 2;
+}
+
+.password-toggle-btn:hover {
+  color: var(--primary);
+}
+
+html[data-theme="dark"] .password-toggle-btn,
+html.dark .password-toggle-btn {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .password-toggle-btn:hover,
+html.dark .password-toggle-btn:hover {
+  color: #60a5fa;
 }
 
 /* الأزرار العصرية والناعمة */
@@ -456,23 +816,48 @@ body.exam-active-mode {
     font-size: 14px;
   }
 
+  .nav-header {
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.6rem !important;
+  }
+
   .nav-header .max-w-6xl {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.75rem;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.65rem !important;
   }
 
-  .nav-header .flex.items-center.gap-2 {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.4rem;
-    width: 100%;
+  /* مصفوفة أزرار التنقل المريحة والمنظمة على شاشات التليفون */
+  .nav-buttons-container {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.35rem !important;
+    width: 100% !important;
+    background: #f1f5f9;
+    padding: 0.3rem !important;
+    border-radius: var(--radius-lg) !important;
+    border: 1px solid var(--slate-200) !important;
+    box-sizing: border-box !important;
   }
 
-  .nav-header .btn {
-    padding: 0.45rem 0.5rem;
-    font-size: 0.72rem;
-    justify-content: center;
+  html.dark .nav-buttons-container,
+  [data-theme="dark"] .nav-buttons-container {
+    background: #101726 !important;
+    border-color: #1e293b !important;
+  }
+
+  .nav-buttons-container .btn {
+    padding: 0.55rem 0.3rem !important;
+    font-size: 0.74rem !important;
+    font-weight: 700 !important;
+    border-radius: var(--radius-md) !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    box-shadow: none !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.35rem !important;
   }
 
   .app-card {
