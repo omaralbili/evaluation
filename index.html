@@ -5,11 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>منصة الاختبارات الإلكترونية الذكية المؤمنة</title>
   
-  <!-- المكتبات الأساسية الخارجية -->
+  <!-- المكتبات الأساسية الخارجية مثبتة بإصدارات محددة وهويات سلامة (SRI) -->
+  <!-- ملاحظة: Tailwind عبر CDN محرك بناء لحظي (JIT) لا يقبل التثبيت بهاش SRI - يفضل مستقبلاً بناؤه محلياً -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha384-t1nt8BQoYMLFN5p42tRAtuAAFQaCQODekUVeKKZrEnEyp4H2R0RHFz0KWpmj7i8g" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.26.25/dist/sweetalert2.all.min.js" integrity="sha384-nLoOnA/BDh8A/jxqtckg4DumuCGOBYUnNJLZdQz/zfYNp3wcjGSoWTAzgko06G/2" crossorigin="anonymous"></script>
+  <!-- مكتبة Excel (XLSX ~800KB) لم تعد تُحمّل هنا؛ تُحمّل كسلاً عند أول تصدير من لوحة الإدارة فقط -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- ملف التصميم المخصص والمنفصل -->
@@ -32,102 +35,48 @@
     })();
   </script>
 
-  <!-- حماية فورية مطلقة تبدأ من اللحظة الأولى في الرأس لمنع أدوات المطورين والكونسول -->
+  <!-- حظر مبكر وخفيف لاختصارات أدوات المطورين قبل تحميل وحدات التطبيق (المنطق الكامل والعادل في js/anticheat.js) -->
   <script>
     (function() {
-      // 1. تفريغ شاشة الكونسول وإلغاء دوالها من البداية
-      try {
-        const noop = function() {};
-        ['log', 'debug', 'info', 'warn', 'error', 'table', 'trace', 'dir', 'dirxml', 'group', 'groupCollapsed', 'groupEnd', 'clear', 'time', 'timeEnd', 'count', 'profile', 'assert'].forEach(function(m) {
-          try {
-            Object.defineProperty(console, m, { value: noop, writable: false, configurable: false });
-          } catch(e) {
-            console[m] = noop;
-          }
-        });
-      } catch(e) {}
+      function isDashboardVisible() {
+        const d = document.getElementById('dashboard');
+        return d && !d.classList.contains('hidden');
+      }
 
-      // 2. حظر مفاتيح المطورين F12 و Ctrl+Shift+I و < > باللغتين العربية والإنجليزية
+      // حظر اختصارات فتح أدوات المطورين الفعلية فقط: F12 و Ctrl+Shift+I/J/C/K
+      // لا يتم حظر أي حروف أو رموز كتابة عادية حتى لا يتضرر الطالب أثناء الكتابة
       function blockDevToolsEarly(e) {
-        const dash = document.getElementById('dashboard');
-        if (dash && !dash.classList.contains('hidden')) return;
+        if (isDashboardVisible()) return;
 
         const code = (e.code || '').toLowerCase();
         const key = (e.key || '').toLowerCase();
         const keyCode = e.keyCode || e.which || 0;
         const isCtrl = e.ctrlKey || e.metaKey;
 
-        // F12
         const isF12 = keyCode === 123 || key === 'f12' || code === 'f12';
-
-        // Ctrl+Shift+I / J / C / K / P (يدعم الكيبورد العربي والإنجليزي)
-        const isDevShortcut = (isCtrl && e.shiftKey && (
+        const isDevShortcut = isCtrl && e.shiftKey && (
           code === 'keyi' || keyCode === 73 || key === 'i' || key === 'ه' ||
           code === 'keyj' || keyCode === 74 || key === 'j' || key === 'ت' ||
           code === 'keyc' || keyCode === 67 || key === 'c' || key === 'ؤ' ||
-          code === 'keyk' || keyCode === 75 || key === 'k' || key === 'ن' ||
-          code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
-        ));
-
-        // عرض السورس وحفظ الصفحة Ctrl+U و Ctrl+S و Ctrl+P
-        const isSourceOrSave = isCtrl && (
-          code === 'keyu' || keyCode === 85 || key === 'u' || key === 'ع' ||
-          code === 'keys' || keyCode === 83 || key === 's' || key === 'س' ||
-          code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
+          code === 'keyk' || keyCode === 75 || key === 'k' || key === 'ن'
         );
 
-        // رموز < و >
-        const isAngle = (
-          key === '<' || key === '>' || key === '،' ||
-          (e.shiftKey && (code === 'comma' || code === 'period' || keyCode === 188 || keyCode === 190))
-        );
-
-        // قائمة الماوس بالكيبورد (Shift+F10 أو مفتاح القائمة)
-        const isMenuKey = keyCode === 93 || (e.shiftKey && (keyCode === 121 || key === 'f10'));
-
-        if (isF12 || isDevShortcut || isSourceOrSave || isAngle || isMenuKey) {
+        if (isF12 || isDevShortcut) {
           e.preventDefault();
           e.stopPropagation();
-          e.stopImmediatePropagation();
           if (typeof triggerThreatAlert === 'function') {
-            triggerThreatAlert(isAngle ? 'تم رصد محاولة استخدام رموز فحص العناصر (< >)' : 'تم رصد محاولة استخدام اختصارات أدوات المطورين');
-          } else if (typeof Swal !== 'undefined') {
-            Swal.fire({
-              title: 'تم رصد عملية اختراق او عمل ضار',
-              text: 'تم حظر أدوات المطورين والكونسول لحماية نزاهة الاختبار وسريته.',
-              icon: 'error',
-              confirmButtonText: 'حسناً، متابعة الاختبار',
-              confirmButtonColor: '#e11d48'
-            });
+            triggerThreatAlert('تم منع اختصار أدوات المطورين (F12 / DevTools)');
           }
           return false;
         }
       }
 
-      ['keydown', 'keyup'].forEach(function(evt) {
-        window.addEventListener(evt, blockDevToolsEarly, { capture: true, passive: false });
-        document.addEventListener(evt, blockDevToolsEarly, { capture: true, passive: false });
-      });
+      window.addEventListener('keydown', blockDevToolsEarly, { capture: true, passive: false });
 
-      // 3. حظر النقر بزر الفأرة الأيمن فوراً
+      // منع قائمة الزر الأيمن بهدوء (التنبيه أثناء الامتحان يتم من js/anticheat.js)
       document.addEventListener('contextmenu', function(e) {
-        const dash = document.getElementById('dashboard');
-        if (dash && !dash.classList.contains('hidden')) return;
-
+        if (isDashboardVisible()) return;
         e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (typeof triggerThreatAlert === 'function') {
-          triggerThreatAlert('تم حظر النقر بزر الفأرة الأيمن لمنع فحص العناصر');
-        } else if (typeof Swal !== 'undefined') {
-          Swal.fire({
-            title: 'تم رصد عملية اختراق او عمل ضار',
-            text: 'تم حظر النقر بزر الفأرة الأيمن لمنع فحص العناصر.',
-            icon: 'error',
-            confirmButtonText: 'حسناً',
-            confirmButtonColor: '#e11d48'
-          });
-        }
         return false;
       }, true);
     })();
@@ -229,7 +178,7 @@
             </div>
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1.5">كود الاختبار المعتمد</label>
-              <input type="text" id="st-exam-code" required class="input-field uppercase font-mono tracking-wider" placeholder="مثال: EX-9372">
+              <input type="text" id="st-exam-code" required dir="auto" class="input-field uppercase font-mono tracking-wider" placeholder="مثال: EX-9372">
             </div>
           </div>
 
@@ -283,6 +232,10 @@
         <div class="max-w-4xl mx-auto px-3 md:px-4 py-1 flex justify-between text-[10px] md:text-[11px] text-slate-500 font-semibold">
           <span id="exam-progress-text">تمت الإجابة: 0</span>
           <span><i class="fa-solid fa-shield-cat text-emerald-600"></i> مراقبة وحماية نشطة</span>
+        </div>
+        <!-- شريط التنقل السريع بين الأسئلة مع تمييز المُجاب منها -->
+        <div class="max-w-4xl mx-auto px-3 md:px-4 pb-2">
+          <div id="questions-nav" class="questions-nav"></div>
         </div>
       </div>
 
@@ -360,6 +313,9 @@
         </div>
       </div>
 
+      <!-- بطاقات النظرة العامة: ملخص فوري للنتائج -->
+      <div id="admin-overview-cards" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3"></div>
+
       <!-- قسم التحكم في قواعد Regex لكل فرقة دراسية -->
       <div id="regex-settings-panel" class="app-card p-5 md:p-6 border-l-4 border-l-indigo-600">
         <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
@@ -380,7 +336,7 @@
             <span class="font-bold text-xs text-indigo-700">1. الفرقة الأولى</span>
             <div>
               <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">قاعدة الـ Regex:</label>
-              <input type="text" id="regex-grade-1" class="input-field text-xs font-mono" placeholder="مثال: ^G1-[0-9]{4}$">
+              <input type="text" id="regex-grade-1" dir="ltr" class="input-field text-xs font-mono text-left" placeholder="مثال: ^G1-[0-9]{4}$">
             </div>
             <div>
               <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">وصف / مثال يظهر للطالب:</label>
@@ -393,7 +349,7 @@
             <span class="font-bold text-xs text-indigo-700">2. الفرقة الثانية</span>
             <div>
               <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">قاعدة الـ Regex:</label>
-              <input type="text" id="regex-grade-2" class="input-field text-xs font-mono" placeholder="مثال: ^G2-[0-9]{4}$">
+              <input type="text" id="regex-grade-2" dir="ltr" class="input-field text-xs font-mono text-left" placeholder="مثال: ^G2-[0-9]{4}$">
             </div>
             <div>
               <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">وصف / مثال يظهر للطالب:</label>
@@ -406,7 +362,7 @@
             <span class="font-bold text-xs text-indigo-700">3. الفرقة الثالثة</span>
             <div>
               <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">قاعدة الـ Regex:</label>
-              <input type="text" id="regex-grade-3" class="input-field text-xs font-mono" placeholder="مثال: ^G3-[0-9]{4}$">
+              <input type="text" id="regex-grade-3" dir="ltr" class="input-field text-xs font-mono text-left" placeholder="مثال: ^G3-[0-9]{4}$">
             </div>
             <div>
               <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">وصف / مثال يظهر للطالب:</label>
@@ -419,7 +375,7 @@
             <span class="font-bold text-xs text-indigo-700">4. الفرقة الرابعة</span>
             <div>
               <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">قاعدة الـ Regex:</label>
-              <input type="text" id="regex-grade-4" class="input-field text-xs font-mono" placeholder="مثال: ^G4-[0-9]{4}$">
+              <input type="text" id="regex-grade-4" dir="ltr" class="input-field text-xs font-mono text-left" placeholder="مثال: ^G4-[0-9]{4}$">
             </div>
             <div>
               <label class="block text-[11px] text-slate-500 font-semibold mb-0.5">وصف / مثال يظهر للطالب:</label>
@@ -463,6 +419,27 @@
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- لوحة تحليلات الامتحانات: إحصائيات الدرجات وصعوبة الأسئلة -->
+      <div id="analytics-panel" class="app-card p-5 md:p-6 bg-white border-l-4 border-l-indigo-600 hidden">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-chart-pie text-indigo-600"></i> تحليلات الامتحانات والدرجات
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">إحصائيات الأداء وتوزيع الدرجات وتحليل صعوبة الأسئلة لأي امتحان</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="analytics-exam-select" class="input-field text-xs w-52 md:w-64" onchange="showExamAnalyticsFromSelect()"></select>
+          </div>
+        </div>
+        <div id="analytics-result">
+          <div class="p-8 text-center text-slate-400 border rounded-xl bg-slate-50">
+            <i class="fa-solid fa-chart-pie text-3xl mb-2 text-slate-300"></i>
+            <p class="text-xs">اختر امتحاناً من القائمة أعلاه أو اضغط زر "تحليلات" بجوار أي امتحان لعرض تقريره الكامل</p>
+          </div>
         </div>
       </div>
 
@@ -525,6 +502,10 @@
           
           <div class="flex flex-wrap items-center gap-2">
             <input type="text" id="filter-exam-code" onkeyup="filterResultsTable()" placeholder="ابحث بكود الامتحان أو اسم الطالب أو الفرقة أو الفرع..." class="input-field text-xs w-48 md:w-72">
+            <label class="flex items-center gap-1.5 text-[11px] font-bold text-rose-600 cursor-pointer select-none border border-rose-200 rounded-lg px-2.5 py-2 hover:bg-rose-50">
+              <input type="checkbox" id="filter-flagged-only" onchange="filterResultsTable()" class="accent-rose-600">
+              المخالفات فقط
+            </label>
             <button onclick="exportResultsToExcel()" class="btn btn-success text-xs font-bold">
               <i class="fa-solid fa-file-excel"></i> تصدير Excel
             </button>
@@ -565,6 +546,11 @@
     منظومة الامتحانات الذكية المؤمنة &copy; 2026 - نظام تقييم إلكتروني محمي ومتكامل
   </footer>
 
-  <script src="app.js?v=2.9.0"></script>
+  <!-- وحدات التطبيق بعد إعادة الهيكلة (تُحمّل بالترتيب) -->
+  <script src="js/config.js?v=4.1.0"></script>
+  <script src="js/core.js?v=4.1.0"></script>
+  <script src="js/student.js?v=4.1.0"></script>
+  <script src="js/anticheat.js?v=4.1.0"></script>
+  <script src="js/admin.js?v=4.1.0"></script>
 </body>
 </html>

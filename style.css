@@ -196,6 +196,7 @@ html[data-theme="dark"] #exam-room .sticky,
 html.dark #exam-room .sticky {
   background-color: #0f172a !important;
   border-bottom-color: #1e293b !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 html[data-theme="dark"] .exam-progress-bar,
@@ -362,14 +363,25 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
   font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--slate-50);
   color: var(--slate-800);
   margin: 0;
   padding: 0;
-  line-height: 1.6;
+  line-height: 1.65;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--primary);
+  color: #ffffff;
 }
 
 /* منع التحديد والنسخ والسحب داخل الامتحان */
@@ -419,6 +431,7 @@ body {
 /* حقول الإدخال */
 .input-field {
   width: 100%;
+  min-height: 42px;
   border: 1px solid var(--slate-200);
   border-radius: var(--radius-md);
   padding: 0.68rem 0.95rem;
@@ -427,6 +440,25 @@ body {
   font-size: 0.92rem;
   font-family: inherit;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+textarea.input-field {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.7;
+}
+
+.input-field::placeholder {
+  color: var(--slate-400);
+  opacity: 1;
+}
+
+/* عرض النصوص العربية داخل placeholders للحقول اللاتينية (mono) بخط القاهرة حتى لا تتباعد الحروف وتتشوه */
+.font-mono::placeholder,
+.tracking-wider::placeholder {
+  font-family: 'Cairo', system-ui, sans-serif;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .input-field:focus {
@@ -503,13 +535,33 @@ html.dark .password-toggle-btn:hover {
   transform: scale(0.985);
 }
 
+.btn:disabled,
+.btn[disabled],
+.btn.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
 .btn-primary {
   background-color: var(--primary);
   color: #ffffff;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.35);
 }
 
 .btn-primary:hover {
   background-color: var(--primary-hover);
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
+}
+
+.btn-primary:active {
+  transform: scale(0.985);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.35);
 }
 
 .btn-outline {
@@ -526,19 +578,23 @@ html.dark .password-toggle-btn:hover {
 .btn-success {
   background-color: var(--emerald-600);
   color: #ffffff;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.35);
 }
 
 .btn-success:hover {
   background-color: #047857;
+  box-shadow: 0 4px 10px rgba(5, 150, 105, 0.3);
 }
 
 .btn-danger {
   background-color: var(--rose-600);
   color: #ffffff;
+  box-shadow: 0 1px 2px rgba(225, 29, 72, 0.35);
 }
 
 .btn-danger:hover {
   background-color: #be123c;
+  box-shadow: 0 4px 10px rgba(225, 29, 72, 0.3);
 }
 
 /* خيارات الإجابة في الامتحان */
@@ -560,11 +616,17 @@ html.dark .password-toggle-btn:hover {
   border-color: var(--slate-400);
 }
 
+.option-label:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
 .option-label.is-selected {
   background-color: var(--primary-light);
   border-color: var(--primary);
   color: var(--slate-900);
   font-weight: 600;
+  box-shadow: 0 0 0 1px var(--primary);
 }
 
 .option-radio {
@@ -594,7 +656,13 @@ html.dark .password-toggle-btn:hover {
   border: var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: 1.5rem;
+  scroll-margin-top: 130px;
   transition: transform var(--transition-smooth), border-color var(--transition-smooth);
+}
+
+/* فصل بصري خفيف للشريط العلوي الثابت داخل غرفة الامتحان */
+#exam-room .sticky {
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
 }
 
 .question-card:focus-within {
@@ -884,6 +952,22 @@ body.exam-active-mode {
     padding: 0.3rem 0.6rem;
   }
 
+  /* أهداف لمس مريحة على الهواتف (44px) ومنع تكبير iOS التلقائي عند التركيز */
+  .btn {
+    min-height: 44px;
+  }
+
+  .input-field {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .q-nav-btn {
+    min-width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+
   #student-cam-preview-box {
     width: 140px;
     bottom: 0.75rem;
@@ -893,4 +977,58 @@ body.exam-active-mode {
   #student-cam-preview-box video {
     height: 100px;
   }
+}
+
+/* ==========================================
+   شريط التنقل السريع بين الأسئلة أثناء الامتحان
+   ========================================== */
+.questions-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.q-nav-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'Cairo', system-ui, sans-serif;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.q-nav-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.q-nav-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
+.q-nav-btn.is-answered {
+  background: var(--emerald-600);
+  border-color: var(--emerald-600);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .q-nav-btn,
+html.dark .q-nav-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .q-nav-btn.is-answered,
+html.dark .q-nav-btn.is-answered {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
 }

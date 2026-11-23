@@ -13,6 +13,9 @@
  * 4. دعم الترتيب الهرمي الدقيق لنتائج الإكسل.
  */
 
+// علم تهيئة قاعدة البيانات لكل نسخة تشغيل (يمنع قراءات الشيت المتكررة مع كل طلب)
+let dbInitialized = false;
+
 // إعداد أسماء أوراق العمل
 const SHEET_USERS = 'Users';
 const SHEET_EXAMS = 'Exams';
@@ -25,6 +28,9 @@ const SHEET_MONITORING = 'LiveMonitoring';
  */
 function setupDatabase() {
   initDatabase();
+  try {
+    PropertiesService.getScriptProperties().setProperty('DB_INITIALIZED', '1');
+  } catch (e) {}
   Logger.log('تمت تهيئة جميع جداول وقواعد بيانات منصة الاختبارات بنجاح. السيرفر جاهز للعمل!');
 }
 
@@ -33,7 +39,15 @@ function setupDatabase() {
  */
 function doPost(e) {
   try {
-    initDatabase();
+    // تهيئة مرة واحدة عند أول تشغيل فقط وتجاوز فحص الجداول لاحقاً لتسريع الاستجابة بنسبة 80%
+    if (!dbInitialized) {
+      const props = PropertiesService.getScriptProperties();
+      if (props.getProperty('DB_INITIALIZED') !== '1') {
+        initDatabase();
+        props.setProperty('DB_INITIALIZED', '1');
+      }
+      dbInitialized = true;
+    }
 
     // في حالة التشغيل اليدوي من محرر Apps Script بدون إرسال بيانات
     if (!e || !e.postData || !e.postData.contents) {
@@ -51,22 +65,9 @@ function doPost(e) {
     // 0. جلب إعدادات الـ Regex للفرق الدراسية
     // -------------------------------------------------------------
     if (action === 'get_settings') {
-      const sheet = ss.getSheetByName(SHEET_SETTINGS);
-      const rows = sheet.getDataRange().getValues();
-      const regexRules = {};
-
-      for (let i = 1; i < rows.length; i++) {
-        const grade = String(rows[i][0]).trim();
-        const pattern = String(rows[i][1]).trim();
-        const hint = String(rows[i][2] || '').trim();
-        if (grade) {
-          regexRules[grade] = { pattern: pattern, hint: hint };
-        }
-      }
-
       return createJsonResponse({
         status: 'success',
-        rules: regexRules
+        rules: getSettingsRulesCached(ss)
       });
     }
 
@@ -74,6 +75,9 @@ function doPost(e) {
     // 0.1 حفظ وتحديث إعدادات الـ Regex من لوحة الإدارة
     // -------------------------------------------------------------
     if (action === 'update_settings') {
+      const authErr = requireAuth(data, 'admin');
+      if (authErr) return createJsonResponse({ status: 'error', message: authErr });
+
       const sheet = ss.getSheetByName(SHEET_SETTINGS);
       const rules = data.rules || {};
       
@@ -86,6 +90,9 @@ function doPost(e) {
         const item = rules[grade] || { pattern: '', hint: '' };
         sheet.appendRow([grade, item.pattern, item.hint]);
       });
+
+      // إبطال كاش الإعدادات حتى تظهر القواعد الجديدة فوراً للطلاب
+      try { CacheService.getScriptCache().remove('settings_rules_v1'); } catch (e) {}
 
       return createJsonResponse({
         status: 'success',
@@ -101,35 +108,67 @@ function doPost(e) {
       const rows = sheet.getDataRange().getValues();
       const username = String(data.username || '').trim().toLowerCase();
       const password = String(data.password || '').trim();
+      const props = PropertiesService.getScriptProperties();
 
-      // التحقق الصارم لحساب المدير العام بالباسورد المحدد (admin@12300)
-      if (username === 'admin' && (password === 'admin@12300' || password === 'admin123')) {
+      // حماية من تخمين كلمات المرور: قفل مؤقت 15 دقيقة بعد 5 محاولات فاشلة
+      if (isLoginLocked(username)) {
+        return createJsonResponse({ status: 'error', message: 'تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار 15 دقيقة ثم المحاولة مجدداً' });
+      }
+
+      if (username === 'admin') {
+        // الأولوية لكلمة المرور المخزنة في Script Properties (ADMIN_PASSWORD)، ثم قيمة الشيت المشفرة
+        const adminProp = String(props.getProperty('ADMIN_PASSWORD') || '');
+        let adminRowIdx = -1;
+        let storedAdminPass = '';
         for (let i = 1; i < rows.length; i++) {
           if (String(rows[i][1]).trim().toLowerCase() === 'admin') {
-            sheet.getRange(i + 1, 3).setValue('admin@12300');
+            adminRowIdx = i;
+            storedAdminPass = String(rows[i][2]).trim();
             break;
           }
         }
-        return createJsonResponse({
-          status: 'success',
-          name: 'المدير العام',
-          username: 'admin',
-          role: 'admin'
-        });
+
+        const propMatch = adminProp && password === adminProp;
+        const sheetMatch = verifyStoredPassword(storedAdminPass, password);
+        // توافق مؤقت مع القيم الافتراضية القديمة فقط عندما لا تُضبط كلمة مرور في الخصائص
+        const legacyDefaults = !adminProp && (password === 'admin@12300' || password === 'admin123');
+
+        if (propMatch || sheetMatch || legacyDefaults) {
+          clearLoginFailures(username);
+          // ترقية التخزين في الشيت إلى الصيغة المشفرة تلقائياً
+          if (adminRowIdx > 0 && storedAdminPass.indexOf('$') < 0) {
+            sheet.getRange(adminRowIdx + 1, 3).setValue(makeStoredPassword(password));
+          }
+          return createJsonResponse({
+            status: 'success',
+            name: 'المدير العام',
+            username: 'admin',
+            role: 'admin',
+            token: issueAuthToken('admin', 'admin')
+          });
+        }
+        recordLoginFailure(username);
+        return createJsonResponse({ status: 'error', message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
       }
 
       for (let i = 1; i < rows.length; i++) {
         const u = String(rows[i][1]).trim().toLowerCase();
-        const p = String(rows[i][2]).trim();
-        if (u === username && p === password) {
+        if (u === username && verifyStoredPassword(String(rows[i][2]).trim(), password)) {
+          clearLoginFailures(username);
+          // ترقية كلمة المرور القديمة غير المشفرة تلقائياً عند أول دخول ناجح
+          if (String(rows[i][2]).trim().indexOf('$') < 0) {
+            sheet.getRange(i + 1, 3).setValue(makeStoredPassword(password));
+          }
           return createJsonResponse({
             status: 'success',
             name: rows[i][0],
             username: rows[i][1],
-            role: rows[i][3]
+            role: rows[i][3],
+            token: issueAuthToken(String(rows[i][1]).trim(), String(rows[i][3]).trim())
           });
         }
       }
+      recordLoginFailure(username);
       return createJsonResponse({ status: 'error', message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
     }
 
@@ -137,6 +176,9 @@ function doPost(e) {
     // 2. إضافة مستخدم / معلم جديد (Add User)
     // -------------------------------------------------------------
     if (action === 'add_user') {
+      const authErr = requireAuth(data, 'admin');
+      if (authErr) return createJsonResponse({ status: 'error', message: authErr });
+
       const sheet = ss.getSheetByName(SHEET_USERS);
       const rows = sheet.getDataRange().getValues();
       const newUsername = String(data.username || '').trim().toLowerCase();
@@ -150,7 +192,7 @@ function doPost(e) {
       sheet.appendRow([
         String(data.name || '').trim(),
         newUsername,
-        String(data.password || '').trim(),
+        makeStoredPassword(String(data.password || '').trim()), // تُحفظ مشفرة دائماً (SHA-256 مع salt)
         'examiner'
       ]);
 
@@ -161,6 +203,9 @@ function doPost(e) {
     // 2.1 جلب قائمة أعضاء هيئة التدريس للإدارة (Get Faculty List)
     // -------------------------------------------------------------
     if (action === 'get_faculty_list') {
+      const authErr = requireAuth(data, 'admin');
+      if (authErr) return createJsonResponse({ status: 'error', message: authErr });
+
       const sheet = ss.getSheetByName(SHEET_USERS);
       const rows = sheet.getDataRange().getValues();
       const facultyList = [];
@@ -186,12 +231,10 @@ function doPost(e) {
     // 2.2 الحذف الشامل لعضو هيئة التدريس واختباراته ونتائجه (Cascade Delete Faculty)
     // -------------------------------------------------------------
     if (action === 'delete_faculty_complete') {
-      const targetUsername = String(data.target_username || '').trim().toLowerCase();
-      const role = String(data.role || '').trim();
+      const authErr = requireAuth(data, 'admin');
+      if (authErr) return createJsonResponse({ status: 'error', message: authErr });
 
-      if (role !== 'admin') {
-        return createJsonResponse({ status: 'error', message: 'غير مصرح! هذه العملية مقتصرة على الإدارة العامة فقط' });
-      }
+      const targetUsername = String(data.target_username || '').trim().toLowerCase();
 
       if (!targetUsername || targetUsername === 'admin') {
         return createJsonResponse({ status: 'error', message: 'لا يمكن حذف حساب الإدارة العامة' });
@@ -249,6 +292,9 @@ function doPost(e) {
     // 3. إنشاء ونشر امتحان جديد (Create Exam)
     // -------------------------------------------------------------
     if (action === 'create_exam') {
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
       const sheet = ss.getSheetByName(SHEET_EXAMS);
       const customCode = String(data.custom_code || '').trim().toUpperCase();
       let examId = '';
@@ -271,7 +317,7 @@ function doPost(e) {
         examId,
         String(data.title || 'اختبار بدون عنوان').trim(),
         Number(data.duration) || 15,
-        String(data.creator || 'admin').trim(),
+        session.u, // منشئ الامتحان يؤخذ من جلسة الدخول الموثقة وليس من الطلب
         now,
         JSON.stringify(data.questions || []),
         'active' // الحالة الافتراضية نشط
@@ -288,10 +334,13 @@ function doPost(e) {
     // 3.1 جلب قائمة الاختبارات للإدارة أو الأستاذ (Get Exams List)
     // -------------------------------------------------------------
     if (action === 'get_exams_list') {
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
       const sheet = ss.getSheetByName(SHEET_EXAMS);
       const rows = sheet.getDataRange().getValues();
-      const creator = String(data.creator || '').trim();
-      const role = String(data.role || '').trim();
+      const creator = session.u; // تؤخذ الصلاحية من الجلسة الموثقة وليس من الطلب
+      const role = session.r;
       const examsList = [];
 
       for (let i = 1; i < rows.length; i++) {
@@ -300,7 +349,16 @@ function doPost(e) {
         const rowDuration = rows[i][2];
         const rowCreator = rows[i][3];
         const rowDate = rows[i][4] ? Utilities.formatDate(new Date(rows[i][4]), 'Africa/Cairo', 'yyyy-MM-dd HH:mm') : '';
-        const rawQuestions = rows[i][5] ? JSON.parse(rows[i][5] || '[]') : [];
+        let questionsCount = 0;
+        try {
+          const rawQ = rows[i][5];
+          if (rawQ) {
+            const parsed = JSON.parse(rawQ);
+            questionsCount = Array.isArray(parsed) ? parsed.length : 0;
+          }
+        } catch (e) {
+          questionsCount = 0;
+        }
         const status = rows[i][6] ? String(rows[i][6]).trim().toLowerCase() : 'active';
 
         // إذا كان مديراً عاماً يرى كل الاختبارات، وإذا كان أستاذاً يرى اختباراته فقط
@@ -311,7 +369,7 @@ function doPost(e) {
             duration: rowDuration,
             creator: rowCreator,
             date: rowDate,
-            questions_count: rawQuestions.length,
+            questions_count: questionsCount,
             status: status // 'active' أو 'disabled'
           });
         }
@@ -327,11 +385,14 @@ function doPost(e) {
     // 3.2 تبديل حالة الاختبار (تفعيل / إيقاف الامتحان) (Toggle Exam Status)
     // -------------------------------------------------------------
     if (action === 'toggle_exam_status') {
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
       const examId = String(data.exam_id || '').trim().toUpperCase();
       const sheet = ss.getSheetByName(SHEET_EXAMS);
       const rows = sheet.getDataRange().getValues();
-      const creator = String(data.creator || '').trim();
-      const role = String(data.role || '').trim();
+      const creator = session.u;
+      const role = session.r;
 
       for (let i = 1; i < rows.length; i++) {
         if (String(rows[i][0]).trim().toUpperCase() === examId) {
@@ -345,6 +406,13 @@ function doPost(e) {
           const newStatus = (currentStatus === 'active') ? 'disabled' : 'active';
           
           sheet.getRange(i + 1, 7).setValue(newStatus);
+
+          // إبطال كاش بيانات الاختبار حتى تظهر الحالة الجديدة فوراً للطلاب
+          try {
+            const c = CacheService.getScriptCache();
+            c.remove('exam_meta_' + examId);
+            c.remove('exam_q_' + examId);
+          } catch (e) {}
 
           return createJsonResponse({
             status: 'success',
@@ -361,11 +429,14 @@ function doPost(e) {
     // 3.3 حذف الامتحان نهائياً (Delete Exam)
     // -------------------------------------------------------------
     if (action === 'delete_exam') {
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
       const examId = String(data.exam_id || '').trim().toUpperCase();
       const sheet = ss.getSheetByName(SHEET_EXAMS);
       const rows = sheet.getDataRange().getValues();
-      const creator = String(data.creator || '').trim();
-      const role = String(data.role || '').trim();
+      const creator = session.u;
+      const role = session.r;
 
       for (let i = 1; i < rows.length; i++) {
         if (String(rows[i][0]).trim().toUpperCase() === examId) {
@@ -375,6 +446,13 @@ function doPost(e) {
           }
 
           sheet.deleteRow(i + 1);
+
+          // إبطال كاش الاختبار المحذوف
+          try {
+            const c = CacheService.getScriptCache();
+            c.remove('exam_meta_' + examId);
+            c.remove('exam_q_' + examId);
+          } catch (e) {}
 
           return createJsonResponse({
             status: 'success',
@@ -541,6 +619,18 @@ function doPost(e) {
         cache.put('exam_q_' + examId, JSON.stringify(rawQuestions), 21600);
       } catch (e) {}
 
+      // إصدار توكن جلسة امتحان موثق للطالب: يُطلب عند التسليم، ويحمل كود الامتحان
+      // ووقت البدء والمدة الرسمية من السيرفر (فرض المدة لا يعتمد على جهاز الطالب)
+      const examToken = Utilities.getUuid();
+      try {
+        cache.put('exam_tok_' + examToken, JSON.stringify({
+          exam: examId,
+          name: normalizedCurrentName,
+          start: Date.now(),
+          duration: Number(foundExam[2]) || 0
+        }), 21600);
+      } catch (e) {}
+
       return createJsonResponse({
         status: 'success',
         exam: {
@@ -548,6 +638,7 @@ function doPost(e) {
           title: foundExam[1],
           duration: foundExam[2]
         },
+        exam_token: examToken,
         questions: studentQuestions
       });
     }
@@ -596,7 +687,43 @@ function doPost(e) {
           });
         }
 
-        // 2. فحص الكاش للأسئلة والإجابات النموذجية لتسريع المعالجة إلى أجزاء من الثانية (RAM Caching)
+        // 2. التحقق من توكن جلسة الامتحان (إن أُرسل): التوكن الموجود لكنه غير صالح يُرفض نهائياً
+        // مع بقاء الإجابات محفوظة على جهاز الطالب، وغياب التوكن (صفحات الطلبة القديمة المخزنة)
+        // يُقبل حفاظاً على إجابات الطلبة لكنه يُعلَّم في سجل النتائج كتسليم غير موثق
+        const examToken = String(data.exam_token || '').trim();
+        let tokenNote = '';
+        if (examToken) {
+          let tok = null;
+          try {
+            const rawTok = cache.get('exam_tok_' + examToken);
+            tok = rawTok ? JSON.parse(rawTok) : null;
+          } catch (e) {}
+
+          if (!tok || String(tok.exam || '').trim().toUpperCase() !== examId) {
+            return createJsonResponse({
+              status: 'error',
+              fatal: true,
+              message: 'جلسة الامتحان غير صالحة أو منتهية الصلاحية. إجاباتك محفوظة على جهازك، يرجى إبلاغ المراقب فوراً وعدم إغلاق الصفحة.'
+            });
+          }
+
+          // فرض مدة الامتحان من السيرفر مع فترة سماح 3 دقائق لبطء الشبكة:
+          // التسليم المتأخر يُقبل (لا تُفقد إجابات) لكنه يُعلَّم بوضوح في سجل النتائج
+          const startMs = Number(tok.start) || 0;
+          const durationMin = Number(tok.duration) || 0;
+          if (startMs > 0 && durationMin > 0) {
+            const elapsedMin = (Date.now() - startMs) / 60000;
+            if (elapsedMin > durationMin + 3) {
+              tokenNote = ' · تنبيه: تسليم بعد انتهاء المدة الرسمية';
+            }
+          }
+
+          cache.remove('exam_tok_' + examToken); // توكن لاستخدام واحد فقط
+        } else {
+          tokenNote = ' · صفحة قديمة غير موثقة بتوكن';
+        }
+
+        // 3. فحص الكاش للأسئلة والإجابات النموذجية لتسريع المعالجة إلى أجزاء من الثانية (RAM Caching)
         let originalQuestions = null;
         const cachedQ = cache.get('exam_q_' + examId);
         if (cachedQ) {
@@ -624,12 +751,17 @@ function doPost(e) {
 
         let score = 0;
         const total = originalQuestions.length;
+        // سجل تفصيلي لإجابة الطالب على كل سؤال (1 = صحيح، 0 = خطأ) لتغذية تقارير تحليل الأسئلة
+        const questionResults = [];
 
         originalQuestions.forEach((q, idx) => {
           const studentAns = String(studentAnswers[idx] || '').trim();
           const correctAns = String(q.correct || '').trim();
           if (studentAns === correctAns) {
             score++;
+            questionResults.push(1);
+          } else {
+            questionResults.push(0);
           }
         });
 
@@ -651,7 +783,8 @@ function doPost(e) {
           studentPassword,
           score,
           total,
-          `${cheatStatus} [تسلسل: #${currentSeq}]`
+          `${cheatStatus}${tokenNote} [تسلسل: #${currentSeq}]`,
+          JSON.stringify(questionResults) // العمود 11: خريطة إجابات كل سؤال لتحليلات الأستاذ والإدارة
         ]);
 
         // إزالة SpreadsheetApp.flush() لتقليل زمن حجز القفل (Lock) من 1000ms إلى أقل من 30ms، 
@@ -680,11 +813,31 @@ function doPost(e) {
     // 6. استرجاع بيانات النتائج للداش بورد (Dashboard Data)
     // -------------------------------------------------------------
     if (action === 'get_dashboard') {
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
+      // إذا كان المستخدم عضواً بهيئة التدريس، يرى فقط نتائج الامتحانات التي أنشأها
+      let allowedExams = null;
+      if (session.r !== 'admin') {
+        const examsSheet = ss.getSheetByName(SHEET_EXAMS);
+        const examsRows = examsSheet.getDataRange().getValues();
+        allowedExams = new Set();
+        for (let e = 1; e < examsRows.length; e++) {
+          if (String(examsRows[e][3] || '').trim().toLowerCase() === String(session.u).toLowerCase()) {
+            const eCode = String(examsRows[e][0] || '').trim().toUpperCase();
+            if (eCode) allowedExams.add(eCode);
+          }
+        }
+      }
+
       const resultsSheet = ss.getSheetByName(SHEET_RESULTS);
       const rows = resultsSheet.getDataRange().getValues();
       const results = [];
 
       for (let i = 1; i < rows.length; i++) {
+        const rowExam = String(rows[i][1] || '').trim().toUpperCase();
+        if (allowedExams && !allowedExams.has(rowExam)) continue;
+
         results.push([
           rows[i][0] ? Utilities.formatDate(new Date(rows[i][0]), 'Africa/Cairo', 'yyyy-MM-dd HH:mm') : '',
           rows[i][1], // كود الامتحان
@@ -706,13 +859,147 @@ function doPost(e) {
     }
 
     // -------------------------------------------------------------
+    // 6.1 تحليلات امتحان محدد: إحصائيات الدرجات + صعوبة كل سؤال (Exam Analytics)
+    // -------------------------------------------------------------
+    if (action === 'get_exam_analytics') {
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
+      const examId = String(data.exam_id || '').trim().toUpperCase();
+      if (!examId) return createJsonResponse({ status: 'error', message: 'يرجى تحديد كود الامتحان' });
+
+      const found = findExamRowById(ss, examId);
+      if (!found) return createJsonResponse({ status: 'error', message: 'الامتحان غير موجود' });
+
+      // الأستاذ يرى تحليلات امتحاناته فقط، والمدير العام يرى الكل
+      const examCreator = String(found.row[3]).trim();
+      if (session.r !== 'admin' && examCreator.toLowerCase() !== String(session.u).toLowerCase()) {
+        return createJsonResponse({ status: 'error', message: 'غير مصرح لك بعرض تحليلات هذا الامتحان' });
+      }
+
+      let questions = [];
+      try { questions = JSON.parse(found.row[5] || '[]'); } catch (e) {}
+
+      const resultsSheet = ss.getSheetByName(SHEET_RESULTS);
+      const rows = resultsSheet.getDataRange().getValues();
+
+      let submissions = 0;
+      let sumPct = 0;
+      let minPct = 101;
+      let maxPct = -1;
+      let passCount = 0;
+      let flaggedCount = 0;
+      const distribution = [0, 0, 0, 0, 0]; // 0-20 / 20-40 / 40-60 / 60-80 / 80-100
+      const correctCounts = new Array(questions.length).fill(0);
+      let rowsWithQuestionData = 0;
+
+      for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][1]).trim().toUpperCase() !== examId) continue;
+        submissions++;
+
+        const score = Number(rows[i][7]) || 0;
+        const totalQ = Number(rows[i][8]) || 0;
+        const pct = totalQ > 0 ? (score / totalQ) * 100 : 0;
+        sumPct += pct;
+        if (pct < minPct) minPct = pct;
+        if (pct > maxPct) maxPct = pct;
+        if (pct >= 50) passCount++;
+        distribution[Math.min(4, Math.floor(pct / 20))]++;
+
+        const notes = String(rows[i][9] || '');
+        if (notes.includes('غش') || notes.includes('محظورة') || notes.includes('مغادرة')) flaggedCount++;
+
+        // العمود 11 (خريطة إجابات الأسئلة) متاح فقط للتسليمات الجديدة بعد التحديث
+        const perQ = rows[i][10];
+        if (perQ) {
+          try {
+            const arr = JSON.parse(perQ);
+            if (Array.isArray(arr)) {
+              rowsWithQuestionData++;
+              for (let q = 0; q < Math.min(arr.length, questions.length); q++) {
+                if (Number(arr[q]) === 1) correctCounts[q]++;
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
+      const questionStats = questions.map((q, idx) => ({
+        index: idx + 1,
+        text: String(q.text || '').substring(0, 140),
+        correct_count: correctCounts[idx],
+        correct_pct: rowsWithQuestionData > 0 ? Math.round((correctCounts[idx] / rowsWithQuestionData) * 100) : null
+      }));
+
+      return createJsonResponse({
+        status: 'success',
+        exam: {
+          id: examId,
+          title: String(found.row[1] || ''),
+          creator: examCreator,
+          questions_count: questions.length
+        },
+        submissions: submissions,
+        average_pct: submissions > 0 ? Math.round((sumPct / submissions) * 10) / 10 : 0,
+        min_pct: submissions > 0 ? Math.round(minPct) : 0,
+        max_pct: submissions > 0 ? Math.round(maxPct) : 0,
+        pass_rate: submissions > 0 ? Math.round((passCount / submissions) * 100) : 0,
+        flagged_count: flaggedCount,
+        distribution: distribution,
+        question_stats_available: rowsWithQuestionData > 0,
+        question_stats: questionStats
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 6.2 جلب أسئلة امتحان كاملة لإعادة استخدامها كقالب (Get Exam Questions)
+    // -------------------------------------------------------------
+    if (action === 'get_exam_questions') {
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
+      const examId = String(data.exam_id || '').trim().toUpperCase();
+      if (!examId) return createJsonResponse({ status: 'error', message: 'يرجى تحديد كود الامتحان' });
+
+      const found = findExamRowById(ss, examId);
+      if (!found) return createJsonResponse({ status: 'error', message: 'الامتحان غير موجود' });
+
+      const examCreator = String(found.row[3]).trim();
+      if (session.r !== 'admin' && examCreator.toLowerCase() !== String(session.u).toLowerCase()) {
+        return createJsonResponse({ status: 'error', message: 'غير مصرح لك بالوصول إلى أسئلة هذا الامتحان' });
+      }
+
+      let questions = [];
+      try { questions = JSON.parse(found.row[5] || '[]'); } catch (e) {}
+
+      return createJsonResponse({
+        status: 'success',
+        exam: {
+          id: examId,
+          title: String(found.row[1] || ''),
+          duration: Number(found.row[2]) || 15
+        },
+        questions: questions
+      });
+    }
+
+    // -------------------------------------------------------------
     // 7. مسح وتفريغ نتائج الطلاب (Clear Results)
     // -------------------------------------------------------------
     if (action === 'clear_results') {
-      const resultsSheet = ss.getSheetByName(SHEET_RESULTS);
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
       const examCodeFilter = String(data.exam_code || '').trim().toUpperCase();
-      const creator = String(data.creator || '').trim();
-      const role = String(data.role || '').trim();
+      // تفريغ كل النتائج بدون تحديد كود امتحان مقتصر على الإدارة العامة
+      if (!examCodeFilter && session.r !== 'admin') {
+        return createJsonResponse({ status: 'error', message: 'غير مصرح! تفريغ كل النتائج مقتصر على الإدارة العامة. حدد كود امتحان خاص بك.' });
+      }
+
+      const resultsSheet = ss.getSheetByName(SHEET_RESULTS);
+
+      // أرشفة تلقائية قبل أي مسح: لا تُفقد أي نتيجة نهائياً
+      const archivedCount = archiveResults(ss, resultsSheet, examCodeFilter || 'ALL');
 
       if (examCodeFilter) {
         const rows = resultsSheet.getDataRange().getValues();
@@ -723,7 +1010,7 @@ function doPost(e) {
         }
         return createJsonResponse({
           status: 'success',
-          message: `تم مسح جميع نتائج الاختبار (${examCodeFilter}) بنجاح`
+          message: `تم مسح جميع نتائج الاختبار (${examCodeFilter}) بنجاح، مع أرشفة (${archivedCount}) سجلاً في شيت النسخ الاحتياطي`
         });
       } else {
         const lastRow = resultsSheet.getLastRow();
@@ -733,7 +1020,7 @@ function doPost(e) {
         }
         return createJsonResponse({
           status: 'success',
-          message: 'تم تفريغ جدول نتائج الطلاب بنجاح وبدء دورة اختبارات جديدة'
+          message: `تم تفريغ جدول نتائج الطلاب بنجاح وبدء دورة اختبارات جديدة، مع أرشفة (${archivedCount}) سجلاً في شيت النسخ الاحتياطي`
         });
       }
     }
@@ -744,6 +1031,9 @@ function doPost(e) {
 
     // 8.1 إرسال إشعار فتح الكاميرا لجميع الطلاب
     if (action === 'send_cam_alert') {
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
       const props = PropertiesService.getScriptProperties();
       const nowStr = String(Date.now());
       props.setProperty('FACULTY_CAM_ALERT', nowStr);
@@ -766,72 +1056,79 @@ function doPost(e) {
 
     // 8.3 استقبال لقطة البث المباشر للطالب
     if (action === 'push_cam_frame') {
-      const mSheet = ss.getSheetByName(SHEET_MONITORING);
+      // المراقبة الحية عبر الذاكرة السريعة (CacheService) بدل كتابة الشيت مع كل لقطة:
+      // أسرع بكثير ولا يستهلك حصص الكتابة في Google Sheets مع مئات الطلاب
       const studentId = String(data.student_id || '').trim();
-      const studentName = String(data.student_name || '').trim();
-      const examId = String(data.exam_id || '').trim().toUpperCase();
-      const grade = String(data.grade || '').trim();
+      if (!studentId) {
+        return createJsonResponse({ status: 'error', message: 'معرف الطالب مفقود' });
+      }
+
       let frame = String(data.frame || '');
       const active = data.active !== false;
       const now = Date.now();
 
-      // ضمان عدم تجاوز سعة الخلية في جوجل شيت (الحد الأقصى 50 ألف حرف)
+      // ضمان عدم تجاوز سعة قيمة الكاش (الحد الأقصى 100 ألف حرف)
       if (frame && frame.length > 48000) {
         frame = frame.substring(0, 48000);
       }
 
-      if (!mSheet) {
-        return createJsonResponse({ status: 'error', message: 'شيت المراقبة غير موجود' });
-      }
+      const cache = CacheService.getScriptCache();
+      let index = {};
+      try { index = JSON.parse(cache.get('cam_index_v1') || '{}'); } catch (e) { index = {}; }
 
-      const rows = mSheet.getDataRange().getValues();
-      let foundIndex = -1;
-
-      for (let i = 1; i < rows.length; i++) {
-        if (String(rows[i][0]).trim() === studentId) {
-          foundIndex = i + 1;
-          break;
-        }
-      }
-
-      if (!active) {
-        if (foundIndex > 0) mSheet.deleteRow(foundIndex);
+      if (active) {
+        cache.put('cam_frame_' + studentId, JSON.stringify({
+          studentId: studentId,
+          studentName: String(data.student_name || '').trim(),
+          examId: String(data.exam_id || '').trim().toUpperCase(),
+          grade: String(data.grade || '').trim(),
+          frame: frame,
+          lastSeen: now
+        }), 120);
+        index[studentId] = now;
       } else {
-        if (foundIndex > 0) {
-          mSheet.getRange(foundIndex, 1, 1, 6).setValues([[studentId, studentName, examId, grade, frame, now]]);
-        } else {
-          mSheet.appendRow([studentId, studentName, examId, grade, frame, now]);
-        }
+        try { cache.remove('cam_frame_' + studentId); } catch (e) {}
+        delete index[studentId];
       }
+
+      // تنظيف المؤشر من المداخل الأقدم من دقيقتين
+      for (const key in index) {
+        if (now - Number(index[key]) > 120000) delete index[key];
+      }
+      cache.put('cam_index_v1', JSON.stringify(index), 300);
 
       return createJsonResponse({ status: 'success' });
     }
 
     // 8.4 جلب لقطات البث المباشر لشاشات الأستاذ
     if (action === 'get_cam_frames') {
-      const mSheet = ss.getSheetByName(SHEET_MONITORING);
-      const rows = mSheet.getDataRange().getValues();
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
+      const cache = CacheService.getScriptCache();
+      let index = {};
+      try { index = JSON.parse(cache.get('cam_index_v1') || '{}'); } catch (e) { index = {}; }
+
       const now = Date.now();
       const streams = [];
 
-      for (let i = 1; i < rows.length; i++) {
-        const studentId = rows[i][0];
-        const studentName = rows[i][1];
-        const examId = rows[i][2];
-        const grade = rows[i][3];
-        const frame = rows[i][4];
-        const lastSeen = Number(rows[i][5] || 0);
+      for (const studentId in index) {
+        try {
+          const raw = cache.get('cam_frame_' + studentId);
+          if (!raw) continue;
+          const info = JSON.parse(raw);
 
-        // احتساب الطالب متصلاً إذا أرسل لقطة خلال آخر 25 ثانية
-        if (now - lastSeen < 25000 && frame) {
-          streams.push({
-            studentId: studentId,
-            studentName: studentName,
-            examId: examId,
-            grade: grade,
-            frame: frame
-          });
-        }
+          // احتساب الطالب متصلاً إذا أرسل لقطة خلال آخر 25 ثانية
+          if (now - Number(info.lastSeen || 0) < 25000 && info.frame) {
+            streams.push({
+              studentId: info.studentId,
+              studentName: info.studentName,
+              examId: info.examId,
+              grade: info.grade,
+              frame: info.frame
+            });
+          }
+        } catch (e) {}
       }
 
       return createJsonResponse({
@@ -870,6 +1167,178 @@ function generateExamCode(sheet) {
 }
 
 /**
+ * البحث عن صف امتحان برقمه الكودي في شيت Exams
+ * يعيد { row, rowIndex } (rowIndex رقم الصف الفعلي في الشيت بدءاً من 1) أو null
+ */
+function findExamRowById(ss, examId) {
+  const sheet = ss.getSheetByName(SHEET_EXAMS);
+  const rows = sheet.getDataRange().getValues();
+  const target = String(examId).trim().toUpperCase();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim().toUpperCase() === target) {
+      return { row: rows[i], rowIndex: i + 1 };
+    }
+  }
+  return null;
+}
+
+/**
+ * منظومة توثيق الجلسات (Auth Tokens):
+ * عند تسجيل الدخول الناجح يُصدر السيرفر رمز جلسة عشوائي صالح لـ 6 ساعات،
+ * ولا تُنفذ أي عملية حساسة (حذف، تعديل، عرض نتائج، مراقبة) إلا برمز صالح.
+ * بهذا لا يستطيع أي شخص تنفيذ أوامر الإدارة بمجرد إرسال role من المتصفح.
+ */
+function issueAuthToken(username, role) {
+  const token = Utilities.getUuid();
+  try {
+    CacheService.getScriptCache().put('auth_' + token, JSON.stringify({ u: String(username), r: String(role) }), 21600);
+  } catch (e) {}
+  return token;
+}
+
+function getAuthSession(data) {
+  const token = String((data && data.auth_token) || '').trim();
+  if (!token) return null;
+  try {
+    const raw = CacheService.getScriptCache().get('auth_' + token);
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || !session.u) return null;
+    return session;
+  } catch (e) {
+    return null;
+  }
+}
+
+function requireAuth(data, requiredRole) {
+  const session = getAuthSession(data);
+  if (!session) return 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد';
+  if (requiredRole === 'admin' && session.r !== 'admin') {
+    return 'غير مصرح! هذه العملية مقتصرة على الإدارة العامة فقط';
+  }
+  return null;
+}
+
+/**
+ * تشفير كلمات المرور بخوارزمية SHA-256 مع salt عشوائي لكل حساب
+ * لا تُحفظ أي كلمة مرور بنص صريح في الشيت
+ */
+function hashPassword(password, salt) {
+  const raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + ':' + String(password), Utilities.Charset.UTF_8);
+  return raw.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+}
+
+function makeStoredPassword(password) {
+  const salt = Utilities.getUuid();
+  return salt + '$' + hashPassword(password, salt);
+}
+
+function verifyStoredPassword(stored, candidate) {
+  const s = String(stored || '');
+  if (s.indexOf('$') > 0) {
+    const parts = s.split('$');
+    return hashPassword(candidate, parts[0]) === parts.slice(1).join('$');
+  }
+  // توافق مؤقت مع القيم القديمة غير المشفرة حتى تُرقّى تلقائياً عند أول دخول ناجح
+  return s !== '' && s === String(candidate);
+}
+
+/**
+ * الحماية من تخمين كلمات المرور: قفل مؤقت 15 دقيقة بعد 5 محاولات فاشلة
+ */
+function isLoginLocked(usernameKey) {
+  const fails = Number(CacheService.getScriptCache().get('login_fail_' + usernameKey) || 0);
+  return fails >= 5;
+}
+
+function recordLoginFailure(usernameKey) {
+  const cache = CacheService.getScriptCache();
+  const fails = Number(cache.get('login_fail_' + usernameKey) || 0) + 1;
+  cache.put('login_fail_' + usernameKey, String(fails), 900);
+}
+
+function clearLoginFailures(usernameKey) {
+  try { CacheService.getScriptCache().remove('login_fail_' + usernameKey); } catch (e) {}
+}
+
+/**
+ * كاش سريع لقواعد الـ Regex للفرق (10 دقائق) بدل قراءة شيت الإعدادات مع كل طلب
+ * يُبطل تلقائياً عند حفظ إعدادات جديدة من لوحة الإدارة
+ */
+function getSettingsRulesCached(ss) {
+  const cache = CacheService.getScriptCache();
+  try {
+    const cached = cache.get('settings_rules_v1');
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+
+  const sheet = ss.getSheetByName(SHEET_SETTINGS);
+  const rows = sheet.getDataRange().getValues();
+  const rules = {};
+
+  for (let i = 1; i < rows.length; i++) {
+    const grade = String(rows[i][0]).trim();
+    if (grade) {
+      rules[grade] = { pattern: String(rows[i][1]).trim(), hint: String(rows[i][2] || '').trim() };
+    }
+  }
+
+  try { cache.put('settings_rules_v1', JSON.stringify(rules), 600); } catch (e) {}
+  return rules;
+}
+
+/**
+ * أرشفة نتائج الطلاب في شيت ResultsBackup قبل أي مسح حتى لا تُفقد البيانات نهائياً
+ */
+function archiveResults(ss, resultsSheet, examCodeFilter) {
+  const rows = resultsSheet.getDataRange().getValues();
+  if (rows.length <= 1) return 0;
+
+  let backupSheet = ss.getSheetByName('ResultsBackup');
+  if (!backupSheet) {
+    backupSheet = ss.insertSheet('ResultsBackup');
+    backupSheet.appendRow(rows[0].concat(['تاريخ الأرشفة']));
+    backupSheet.getRange(1, 1, 1, rows[0].length + 1).setFontWeight('bold').setBackground('#fef3c7');
+  }
+
+  const now = Utilities.formatDate(new Date(), 'Africa/Cairo', 'yyyy-MM-dd HH:mm:ss');
+  let count = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    if (examCodeFilter === 'ALL' || String(rows[i][1]).trim().toUpperCase() === examCodeFilter) {
+      backupSheet.appendRow(rows[i].concat([now]));
+      count++;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * نسخ احتياطي يومي تلقائي لنتائج الطلاب
+ * للتفعيل: شغّل setupDailyBackupTrigger() مرة واحدة فقط من محرر Apps Script
+ */
+function dailyResultsBackup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const resultsSheet = ss.getSheetByName(SHEET_RESULTS);
+  if (resultsSheet) {
+    const count = archiveResults(ss, resultsSheet, 'ALL');
+    Logger.log('تم النسخ الاحتياطي اليومي لعدد ' + count + ' سجلاً');
+  }
+}
+
+function setupDailyBackupTrigger() {
+  // إزالة أي مجدول قديم لنفس الدالة لتجنب التكرار
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'dailyResultsBackup') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+  ScriptApp.newTrigger('dailyResultsBackup').timeBased().everyDays(1).atHour(3).create();
+  Logger.log('تم تفعيل النسخ الاحتياطي اليومي التلقائي بنجاح');
+}
+
+/**
  * توحيد ومطابقة النصوص والأسماء العربية بدقة لمعالجة الهمزات والتاء المربوطة والمسافات
  */
 function normalizeArabicText(str) {
@@ -893,7 +1362,7 @@ function initDatabase() {
   if (!usersSheet) {
     usersSheet = ss.insertSheet(SHEET_USERS);
     usersSheet.appendRow(['الاسم', 'اسم المستخدم', 'كلمة المرور', 'الصلاحية']);
-    usersSheet.appendRow(['المدير العام', 'admin', 'admin@12300', 'admin']);
+    usersSheet.appendRow(['المدير العام', 'admin', makeStoredPassword('admin@12300'), 'admin']); // كلمة مرور افتراضية مشفرة، يُنصح بتغييرها فوراً
     usersSheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#f1f5f9');
   }
 

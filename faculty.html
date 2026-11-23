@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>بوابة عضو هيئة التدريس | إعداد ونشر الاختبارات</title>
   
+  <!-- المكتبات مثبتة بإصدارات محددة وهويات سلامة (SRI)؛ أُزيلت مكتبة Excel غير المستخدمة هنا لتخفيف التحميل -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha384-t1nt8BQoYMLFN5p42tRAtuAAFQaCQODekUVeKKZrEnEyp4H2R0RHFz0KWpmj7i8g" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.26.25/dist/sweetalert2.all.min.js" integrity="sha384-nLoOnA/BDh8A/jxqtckg4DumuCGOBYUnNJLZdQz/zfYNp3wcjGSoWTAzgko06G/2" crossorigin="anonymous"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 
@@ -29,22 +31,10 @@
     })();
   </script>
 
-  <!-- حماية فورية مطلقة تبدأ من اللحظة الأولى في الرأس لمنع أدوات المطورين والكونسول -->
+  <!-- حظر مبكر وخفيف لاختصارات أدوات المطورين قبل تحميل وحدات التطبيق -->
   <script>
     (function() {
-      // 1. تفريغ شاشة الكونسول وإلغاء دوالها من البداية
-      try {
-        const noop = function() {};
-        ['log', 'debug', 'info', 'warn', 'error', 'table', 'trace', 'dir', 'dirxml', 'group', 'groupCollapsed', 'groupEnd', 'clear', 'time', 'timeEnd', 'count', 'profile', 'assert'].forEach(function(m) {
-          try {
-            Object.defineProperty(console, m, { value: noop, writable: false, configurable: false });
-          } catch(e) {
-            console[m] = noop;
-          }
-        });
-      } catch(e) {}
-
-      // 2. حظر مفاتيح المطورين F12 و Ctrl+Shift+I و < > باللغتين العربية والإنجليزية
+      // حظر اختصارات فتح أدوات المطورين الفعلية فقط: F12 و Ctrl+Shift+I/J/C/K
       function blockDevToolsEarly(e) {
         const code = (e.code || '').toLowerCase();
         const key = (e.key || '').toLowerCase();
@@ -52,63 +42,24 @@
         const isCtrl = e.ctrlKey || e.metaKey;
 
         const isF12 = keyCode === 123 || key === 'f12' || code === 'f12';
-
-        const isDevShortcut = (isCtrl && e.shiftKey && (
+        const isDevShortcut = isCtrl && e.shiftKey && (
           code === 'keyi' || keyCode === 73 || key === 'i' || key === 'ه' ||
           code === 'keyj' || keyCode === 74 || key === 'j' || key === 'ت' ||
           code === 'keyc' || keyCode === 67 || key === 'c' || key === 'ؤ' ||
-          code === 'keyk' || keyCode === 75 || key === 'k' || key === 'ن' ||
-          code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
-        ));
-
-        const isSourceOrSave = isCtrl && (
-          code === 'keyu' || keyCode === 85 || key === 'u' || key === 'ع' ||
-          code === 'keys' || keyCode === 83 || key === 's' || key === 'س' ||
-          code === 'keyp' || keyCode === 80 || key === 'p' || key === 'ح'
+          code === 'keyk' || keyCode === 75 || key === 'k' || key === 'ن'
         );
 
-        const isAngle = (
-          key === '<' || key === '>' || key === '،' ||
-          (e.shiftKey && (code === 'comma' || code === 'period' || keyCode === 188 || keyCode === 190))
-        );
-
-        const isMenuKey = keyCode === 93 || (e.shiftKey && (keyCode === 121 || key === 'f10'));
-
-        if (isF12 || isDevShortcut || isSourceOrSave || isAngle || isMenuKey) {
+        if (isF12 || isDevShortcut) {
           e.preventDefault();
           e.stopPropagation();
-          e.stopImmediatePropagation();
-          if (typeof Swal !== 'undefined') {
-            Swal.fire({
-              title: 'تم رصد عملية اختراق او عمل ضار',
-              text: 'تم حظر أدوات المطورين والكونسول لحماية نزاهة الاختبار وسريته.',
-              icon: 'error',
-              confirmButtonText: 'حسناً',
-              confirmButtonColor: '#e11d48'
-            });
-          }
           return false;
         }
       }
 
-      ['keydown', 'keyup'].forEach(function(evt) {
-        window.addEventListener(evt, blockDevToolsEarly, { capture: true, passive: false });
-        document.addEventListener(evt, blockDevToolsEarly, { capture: true, passive: false });
-      });
+      window.addEventListener('keydown', blockDevToolsEarly, { capture: true, passive: false });
 
       document.addEventListener('contextmenu', function(e) {
         e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (typeof Swal !== 'undefined') {
-          Swal.fire({
-            title: 'تم رصد عملية اختراق او عمل ضار',
-            text: 'تم حظر النقر بزر الفأرة الأيمن لمنع فحص العناصر.',
-            icon: 'error',
-            confirmButtonText: 'حسناً',
-            confirmButtonColor: '#e11d48'
-          });
-        }
         return false;
       }, true);
     })();
@@ -224,7 +175,7 @@
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1.5">كود الاختبار المعتمد (اتركه فارغاً للتوليد التلقائي)</label>
-            <input type="text" id="faculty-custom-code" placeholder="مثال: PHYS-101 أو اتركها فارغة" class="input-field text-xs font-mono uppercase tracking-wider">
+            <input type="text" id="faculty-custom-code" dir="auto" placeholder="مثال: PHYS-101 أو اتركها فارغة" class="input-field text-xs font-mono uppercase tracking-wider">
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1.5">مدة الامتحان المحددة (بالدقائق)</label>
@@ -281,6 +232,27 @@
         </div>
       </div>
 
+      <!-- لوحة تحليلات الامتحانات: إحصائيات الدرجات وصعوبة الأسئلة -->
+      <div id="analytics-panel" class="app-card p-5 md:p-6 bg-white border-l-4 border-l-indigo-600 hidden">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-chart-pie text-indigo-600"></i> تحليلات امتحاناتك ودرجات طلابك
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">إحصائيات الأداء وتوزيع الدرجات وتحليل صعوبة الأسئلة لأي امتحان من امتحاناتك</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="analytics-exam-select" class="input-field text-xs w-52 md:w-64" onchange="showExamAnalyticsFromSelect()"></select>
+          </div>
+        </div>
+        <div id="analytics-result">
+          <div class="p-8 text-center text-slate-400 border rounded-xl bg-slate-50">
+            <i class="fa-solid fa-chart-pie text-3xl mb-2 text-slate-300"></i>
+            <p class="text-xs">اضغط زر "تحليلات" بجوار أي امتحان في الجدول أعلاه لعرض تقريره الكامل هنا</p>
+          </div>
+        </div>
+      </div>
+
       <!-- غرفة المراقبة الحية بالكاميرا لجميع الطلاب (Live Proctored Video Grid) -->
       <div class="app-card p-5 md:p-6 bg-white border-l-4 border-l-rose-500 space-y-4">
         <div class="flex flex-wrap justify-between items-center gap-3 pb-3 border-b">
@@ -320,6 +292,10 @@
           </div>
           <div class="flex items-center gap-2">
             <input type="text" id="filter-faculty-results" onkeyup="filterFacultyTable()" placeholder="ابحث بكود الامتحان أو اسم الطالب..." class="input-field text-xs w-48 md:w-64">
+            <label class="flex items-center gap-1.5 text-[11px] font-bold text-rose-600 cursor-pointer select-none border border-rose-200 rounded-lg px-2.5 py-2 hover:bg-rose-50">
+              <input type="checkbox" id="filter-faculty-flagged-only" onchange="filterFacultyTable()" class="accent-rose-600">
+              المخالفات فقط
+            </label>
             <button onclick="exportResultsToExcel()" class="btn btn-success text-xs font-bold">
               <i class="fa-solid fa-file-excel"></i> تصدير Excel مرتباً
             </button>
@@ -361,7 +337,11 @@
     بوابة عضو هيئة التدريس &copy; 2026 - نظام الاختبارات الإلكترونية المحمي
   </footer>
 
-  <script src="app.js?v=2.9.0"></script>
+  <!-- وحدات التطبيق بعد إعادة الهيكلة؛ وحدة الإدارة مطلوبة هنا لدالة تصدير Excel المشتركة -->
+  <script src="js/config.js?v=4.1.0"></script>
+  <script src="js/core.js?v=4.1.0"></script>
+  <script src="js/anticheat.js?v=4.1.0"></script>
+  <script src="js/admin.js?v=4.1.0"></script>
   <script>
     // تفعيل فحص جلسة المعلم عند فتح الصفحة
     document.addEventListener('DOMContentLoaded', () => {
@@ -575,8 +555,9 @@
       const duration = document.getElementById('faculty-exam-duration').value.trim();
       const blocks = document.querySelectorAll('#faculty-questions-container .q-block');
 
-      if (!title || !duration || blocks.length === 0) {
-        return Swal.fire('تنبيه', 'يرجى إكمال عنوان الامتحان ومدته وكتابة الأسئلة', 'warning');
+      const numDuration = parseInt(duration, 10);
+      if (!title || isNaN(numDuration) || numDuration <= 0 || blocks.length === 0) {
+        return Swal.fire('تنبيه', 'يرجى إكمال عنوان الامتحان وتحديد مدة صحيحة بالدقائق (أكبر من صفر) وإضافة الأسئلة', 'warning');
       }
 
       const questions = [];
@@ -606,7 +587,7 @@
         action: 'create_exam',
         title,
         custom_code: customCode,
-        duration,
+        duration: numDuration,
         creator: currentUser ? currentUser.username : 'faculty',
         questions
       });
@@ -645,16 +626,15 @@
 
       const tbody = document.getElementById('faculty-exams-tbody');
       if (!tbody) return;
-      tbody.innerHTML = '';
 
       if (!res || res.status !== 'success' || !res.exams || res.exams.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">لم تقم بنشر أي امتحانات بعد</td></tr>`;
         return;
       }
 
-      res.exams.forEach(exam => {
+      tbody.innerHTML = res.exams.map(exam => {
         const isActive = exam.status === 'active';
-        tbody.innerHTML += `
+        return `
           <tr>
             <td><span class="font-bold text-sky-600 font-mono">${escapeHTML(exam.id)}</span></td>
             <td class="font-semibold text-slate-800">${escapeHTML(exam.title)}</td>
@@ -669,6 +649,12 @@
             </td>
             <td>
               <div class="flex items-center gap-1.5">
+                <button onclick="showExamAnalytics('${escapeHTML(exam.id)}')" class="btn btn-outline text-xs py-1 px-2.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+                  <i class="fa-solid fa-chart-pie"></i> تحليلات
+                </button>
+                <button onclick="duplicateExamAsTemplate('${escapeHTML(exam.id)}')" class="btn btn-outline text-xs py-1 px-2.5 text-sky-600 border-sky-200 hover:bg-sky-50">
+                  <i class="fa-solid fa-copy"></i> نسخ كقالب
+                </button>
                 <button onclick="toggleExamStatus('${escapeHTML(exam.id)}')" class="btn btn-outline text-xs py-1 px-2.5 ${isActive ? 'text-amber-600 border-amber-300 hover:bg-amber-50' : 'text-emerald-600 border-emerald-300 hover:bg-emerald-50'}">
                   <i class="fa-solid ${isActive ? 'fa-pause' : 'fa-play'}"></i>
                   ${isActive ? 'إيقاف مؤقت' : 'تفعيل'}
@@ -680,7 +666,15 @@
             </td>
           </tr>
         `;
-      });
+      }).join('');
+
+      // تعبئة قائمة اختيار الامتحان في لوحة التحليلات
+      const analyticsSelect = document.getElementById('analytics-exam-select');
+      if (analyticsSelect) {
+        const currentVal = analyticsSelect.value;
+        analyticsSelect.innerHTML = res.exams.map(e => `<option value="${escapeHTML(e.id)}">${escapeHTML(e.id)} - ${escapeHTML(e.title)}</option>`).join('');
+        if (currentVal && res.exams.some(e => e.id === currentVal)) analyticsSelect.value = currentVal;
+      }
     }
 
     async function toggleExamStatus(examId) {
@@ -730,18 +724,16 @@
 
     async function loadFacultyDashboard() {
       const res = await apiCall({ action: 'get_dashboard' });
-      if (!res || res.status !== 'success' || !res.results) return;
-
       const tbody = document.getElementById('faculty-results-tbody');
-      tbody.innerHTML = '';
+      if (!tbody) return;
 
-      if (res.results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">لا توجد نتائج مسجلة حتى الآن</td></tr>`;
+      if (!res || res.status !== 'success' || !res.results || res.results.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-slate-400">لا توجد نتائج مسجلة حتى الآن</td></tr>`;
         return;
       }
 
       const reversed = [...res.results].reverse();
-      reversed.forEach(row => {
+      tbody.innerHTML = reversed.map(row => {
         const safeDate = escapeHTML(row[0]);
         const safeCode = escapeHTML(row[1]);
         const safeName = escapeHTML(row[2]);
@@ -755,7 +747,7 @@
 
         const isCheat = String(safeStatus).includes('غش') || String(safeStatus).includes('محظورة') || String(safeStatus).includes('مغادرة');
 
-        tbody.innerHTML += `
+        return `
           <tr>
             <td class="text-slate-500 font-mono text-xs">${safeDate}</td>
             <td><span class="font-bold text-sky-600">${safeCode}</span></td>
@@ -773,46 +765,118 @@
             </td>
           </tr>
         `;
-      });
+      }).join('');
     }
 
     function filterFacultyTable() {
-      const query = document.getElementById('filter-faculty-results').value.trim().toUpperCase();
+      const filterInput = document.getElementById('filter-faculty-results');
+      const query = (filterInput ? filterInput.value : '').trim().toUpperCase();
+      const flaggedOnly = document.getElementById('filter-faculty-flagged-only') && document.getElementById('filter-faculty-flagged-only').checked;
       const rows = document.querySelectorAll('#faculty-results-tbody tr');
       rows.forEach(row => {
-        const text = row.innerText.toUpperCase();
-        row.style.display = text.includes(query) ? '' : 'none';
+        const text = (row.textContent || '').toUpperCase();
+        const matchesQuery = !query || text.includes(query);
+        const matchesFlagged = !flaggedOnly || isFlaggedStatusText(text);
+        row.style.display = (matchesQuery && matchesFlagged) ? '' : 'none';
       });
     }
 
-    async function confirmClearResults() {
-      Swal.fire({
-        title: 'تأكيد تفريغ نتائج الطلاب',
-        text: 'تأكد أنك قمت بتنزيل ملف الـ Excel أولاً. هل تريد بالتأكيد مسح نتائج الطلاب من الجدول وقاعدة البيانات لبدء اختبار جديد؟',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'نعم، قم بالحذف والتفريغ',
-        cancelButtonText: 'إلغاء',
-        confirmButtonColor: '#e11d48',
-        cancelButtonColor: '#64748b'
-      }).then(async (result) => {
-        if (result.isConfirmed) {
-          const filterVal = document.getElementById('filter-faculty-results') ? document.getElementById('filter-faculty-results').value.trim() : '';
-          const res = await apiCall({
-            action: 'clear_results',
-            exam_code: filterVal, // إذا كان كاتب كود في الفلتر يمسح نتائجه فقط، وإذا كان فارغاً يمسح الكل
-            creator: currentUser ? currentUser.username : '',
-            role: currentUser ? currentUser.role : ''
-          });
+    // إعادة استخدام امتحان سابق كقالب: تحميل أسئلته في المحرر لتعديلها ونشرها كامتحان جديد
+    async function duplicateExamAsTemplate(examId) {
+      const res = await apiCall({ action: 'get_exam_questions', exam_id: examId });
+      if (!res || res.status !== 'success') {
+        return Swal.fire('خطأ', res ? res.message : 'تعذر جلب أسئلة الامتحان', 'error');
+      }
 
-          if (res && res.status === 'success') {
-            Swal.fire('تم التفريغ بنجاح', res.message, 'success');
-            loadFacultyDashboard();
-          } else {
-            Swal.fire('خطأ', res ? res.message : 'تعذر مسح النتائج', 'error');
+      document.getElementById('faculty-exam-title').value = `نسخة من ${res.exam.title}`;
+      document.getElementById('faculty-exam-duration').value = res.exam.duration || '';
+      document.getElementById('faculty-custom-code').value = '';
+
+      const container = document.getElementById('faculty-questions-container');
+      container.innerHTML = '';
+
+      (res.questions || []).forEach(q => {
+        addFacultyQuestionField();
+        const block = container.lastElementChild;
+        if (!block) return;
+        block.querySelector('.q-text').value = q.text || '';
+        block.querySelector('.q-opt1').value = q.opt1 || '';
+        block.querySelector('.q-opt2').value = q.opt2 || '';
+        block.querySelector('.q-opt3').value = q.opt3 || '';
+        block.querySelector('.q-opt4').value = q.opt4 || '';
+        block.querySelector('.q-correct').value = String(q.correct || '1');
+        if (q.image) {
+          const imgData = block.querySelector('.q-image-data');
+          const imgUrl = block.querySelector('.q-image-url');
+          const previewBox = block.querySelector('.q-image-preview-box');
+          const previewImg = block.querySelector('.q-image-preview');
+
+          if (imgData) imgData.value = q.image;
+          if (previewImg) previewImg.src = q.image;
+          if (previewBox) previewBox.classList.remove('hidden');
+
+          if (imgUrl && !q.image.startsWith('data:')) {
+            imgUrl.value = q.image;
           }
         }
       });
+
+      if (!res.questions || res.questions.length === 0) addFacultyQuestionField();
+
+      Swal.fire({
+        title: 'تم تحميل القالب بنجاح',
+        text: `تم نسخ ${(res.questions || []).length} سؤالاً من الامتحان (${examId}) إلى المحرر. عدّل ما تشاء ثم انشره كامتحان جديد بكود جديد.`,
+        icon: 'success',
+        confirmButtonText: 'فهمت'
+      });
+
+      document.getElementById('faculty-exam-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    async function confirmClearResults() {
+      const filterInput = document.getElementById('filter-faculty-results');
+      const filterVal = filterInput ? filterInput.value.trim().toUpperCase() : '';
+
+      const { value: targetExamCode } = await Swal.fire({
+        title: 'تأكيد تفريغ نتائج اختبار',
+        html: `
+          <div class="text-right text-xs space-y-2 mt-2">
+            <p>تأكد من تنزيل ملف الـ Excel أولاً لحفظ نسخة قبل المسح.</p>
+            <p class="font-bold text-slate-700">أدخل كود الامتحان المراد مسح نتائجه:</p>
+          </div>
+        `,
+        input: 'text',
+        inputValue: filterVal,
+        inputPlaceholder: 'مثال: EX-1234',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'تفريغ نتائج هذا الامتحان',
+        cancelButtonText: 'إلغاء',
+        confirmButtonColor: '#e11d48',
+        cancelButtonColor: '#64748b',
+        inputValidator: (val) => {
+          if (!val || !val.trim()) {
+            return 'يرجى كتابة كود الامتحان المطلوب تفريغ نتائجه';
+          }
+        }
+      });
+
+      if (targetExamCode) {
+        const cleanCode = targetExamCode.trim().toUpperCase();
+        const res = await apiCall({
+          action: 'clear_results',
+          exam_code: cleanCode,
+          creator: currentUser ? currentUser.username : '',
+          role: currentUser ? currentUser.role : ''
+        });
+
+        if (res && res.status === 'success') {
+          Swal.fire('تم التفريغ بنجاح', res.message, 'success');
+          loadFacultyDashboard();
+        } else {
+          Swal.fire('خطأ', res ? res.message : 'تعذر مسح النتائج', 'error');
+        }
+      }
     }
 
     // ==========================================
@@ -820,34 +884,39 @@
     // ==========================================
     let activePeerStreams = {};
     let cloudMonitoringInterval = null;
-
-    document.addEventListener('DOMContentLoaded', () => {
-      // بدء الاستعلام السحابي التلقائي عن كاميرات الطلاب كل 3.5 ثانية
-      startCloudLiveMonitoring();
-    });
+    let isFetchingCamFrames = false;
 
     function startCloudLiveMonitoring() {
       if (cloudMonitoringInterval) clearInterval(cloudMonitoringInterval);
-      // فحص أولي فوري ثم تكرار دوري
+      if (!currentUser) return;
       fetchCloudCamFrames();
-      cloudMonitoringInterval = setInterval(fetchCloudCamFrames, 3500);
+      cloudMonitoringInterval = setInterval(fetchCloudCamFrames, 5000);
     }
 
     async function fetchCloudCamFrames() {
       const workspace = document.getElementById('faculty-workspace');
-      if (!workspace || workspace.classList.contains('hidden')) return;
+      if (!workspace || workspace.classList.contains('hidden') || !currentUser || document.hidden || isFetchingCamFrames) return;
 
+      isFetchingCamFrames = true;
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
         const res = await fetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'get_cam_frames' })
+          body: JSON.stringify({ action: 'get_cam_frames', auth_token: currentUser ? currentUser.token : '' }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
         const data = await res.json();
         if (data && data.status === 'success' && data.streams) {
           renderCloudVideoGrid(data.streams);
         }
-      } catch (err) {}
+      } catch (err) {
+      } finally {
+        isFetchingCamFrames = false;
+      }
     }
 
     function renderCloudVideoGrid(streams) {
@@ -894,12 +963,6 @@
 
     function refreshLiveMonitoringGrid() {
       fetchCloudCamFrames();
-      Swal.fire({
-        title: 'جاري تحديث شاشات البث المباشر...',
-        timer: 1000,
-        showConfirmButton: false,
-        didOpen: () => Swal.showLoading()
-      });
     }
 
     async function requestAllStudentsOpenCam() {
@@ -916,7 +979,8 @@
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
             action: 'send_cam_alert',
-            exam_id: 'ALL'
+            exam_id: 'ALL',
+            auth_token: currentUser ? currentUser.token : ''
           })
         });
 
