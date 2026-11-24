@@ -201,19 +201,6 @@ function stopStudentCamera() {
     }).catch(() => {});
   }
 }
-  if (currentExam) {
-    localStorage.setItem(`student_cam_stream_${currentExam.student_id}`, JSON.stringify({ active: false }));
-    fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        action: 'push_cam_frame',
-        student_id: currentExam.student_id,
-        active: false
-      })
-    }).catch(() => {});
-  }
-}
 
 async function startStudentExam(e) {
   e.preventDefault();
@@ -229,7 +216,7 @@ async function startStudentExam(e) {
     return Swal.fire('تنبيه', 'يرجى استكمال جميع الحقول المطلوبة (الاسم، الفرقة، الفرع، كود الاختبار، وكلمة المرور)', 'warning');
   }
 
-  // 0. فحص الجلسة محلياً (الدخول لمرة واحدة فقط لعند ما يسلم، ومنع الخروج وإعادة الدخول)
+  // 0. فحص الجلسة محلياً: منع الطالب الذي سلم الامتحان مسبقاً من الإعادة
   const studentNorm = name.toLowerCase().replace(/[أإآء]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
   const finishedKey = `exam_done_${examId}_${studentNorm}`;
   const sessionKey = `exam_session_${examId}_${studentNorm}`;
@@ -238,16 +225,6 @@ async function startStudentExam(e) {
     return Swal.fire({
       title: 'غير مسموح بالدخول!',
       text: 'لقد قمت بأداء هذا الامتحان وتسليمه مسبقاً، ولا يُسمح بالدخول أو الإعادة نهائياً.',
-      icon: 'error',
-      confirmButtonText: 'حسناً',
-      confirmButtonColor: '#e11d48'
-    });
-  }
-
-  if (localStorage.getItem(sessionKey)) {
-    return Swal.fire({
-      title: 'غير مسموح بالدخول!',
-      text: 'لقد قمت بالدخول لهذا الامتحان مسبقاً! نظام الاختبارات يسمح بالدخول لمرة واحدة فقط حتى التسليم، ولا يُسمح بالخروج وفتح الامتحان مجدداً.',
       icon: 'error',
       confirmButtonText: 'حسناً',
       confirmButtonColor: '#e11d48'
@@ -271,7 +248,7 @@ async function startStudentExam(e) {
     }
   }
 
-  // 2. طلب بدء الامتحان والتحقق السحابي الشامل (الاسم + الامتحان + عدم الخروج وإعادة الدخول + كوتا كلمة المرور)
+  // 2. طلب بدء الامتحان والتحقق السحابي الشامل
   const res = await apiCall({
     action: 'get_exam',
     exam_id: examId,
@@ -283,10 +260,10 @@ async function startStudentExam(e) {
   });
 
   if (!res || res.status !== 'success') {
-    return Swal.fire('تنبيه أمني', res ? res.message : 'تعذر تحميل بيانات الامتحان', 'warning');
+    return Swal.fire('تنبيه أمني', res ? res.message : 'تعذر تحميل بيانات الامتحان، يرجى مراجعة البيانات أو الاتصال بالمعلم', 'warning');
   }
 
-  // تثبيت بدء الجلسة فور استلام الأسئلة لمنع أي خروج وإعادة دخول
+  // تثبيت بدء الجلسة فور استلام الأسئلة
   try {
     localStorage.setItem(sessionKey, 'started_' + Date.now());
   } catch(e) {}
@@ -300,43 +277,72 @@ async function startStudentExam(e) {
     console.warn("Fullscreen permission blocked or not permitted directly");
   }
 
-  currentExam = {
-    exam_id: examId,
-    student_name: name,
-    student_id: id,
-    student_grade: grade,
-    student_branch: branch,
-    student_password: password,
-    exam_token: res.exam_token || '', // توكن جلسة الامتحان الموثق من السيرفر
-    questions: secureShuffleArray(res.questions)
-  };
+  try {
+    const rawQList = Array.isArray(res.questions) ? res.questions : [];
+    if (rawQList.length === 0) {
+      return Swal.fire('تنبيه', 'هذا الامتحان لا يحتوي على أي أسئلة مضافة حتى الآن. يرجى التواصل مع أستاذ المقرر.', 'warning');
+    }
 
-  examAnswers = {};
-  examWarningsCount = 0;
+    // تطبيع وتأمين بنية الأسئلة والخيارات
+    const normalizedQuestions = rawQList.map((q, idx) => {
+      const qIndex = (q.index !== undefined && q.index !== null) ? q.index : idx;
+      let opts = [];
+      if (Array.isArray(q.options) && q.options.length > 0) {
+        opts = q.options;
+      } else {
+        opts = [q.opt1, q.opt2, q.opt3, q.opt4].filter(o => o !== undefined && o !== null && o !== '');
+      }
+      return {
+        index: qIndex,
+        text: q.text || '',
+        image: q.image || '',
+        options: opts
+      };
+    });
 
-  // ملء بيانات الترويسة
-  document.getElementById('exam-title-display').innerText = res.exam.title || 'الاختبار الإلكتروني';
-  const idDisplay = id ? ` | ID: ${id}` : '';
-  document.getElementById('student-info-display').innerText = `الطالب: ${name} | ${grade} (${branch})${idDisplay}`;
+    currentExam = {
+      exam_id: examId,
+      student_name: name,
+      student_id: id,
+      student_grade: grade,
+      student_branch: branch,
+      student_password: password,
+      exam_token: res.exam_token || '',
+      questions: secureShuffleArray(normalizedQuestions)
+    };
 
-  // بناء الأسئلة وشريط التنقل السريع بينها
-  renderQuestions(currentExam.questions);
-  buildQuestionsNav();
-  restoreExamAnswersLocally();
+    examAnswers = {};
+    examWarningsCount = 0;
 
-  // إخفاء الأقسام وإظهار قاعة الامتحان
-  document.getElementById('student-login').classList.add('hidden');
-  document.getElementById('navbar').classList.add('hidden');
-  document.getElementById('exam-room').classList.remove('hidden');
+    // ملء بيانات الترويسة
+    const examTitle = (res.exam && res.exam.title) ? res.exam.title : (res.title || 'الاختبار الإلكتروني');
+    const durationMin = Number((res.exam && res.exam.duration) || res.duration || 15);
+    document.getElementById('exam-title-display').innerText = examTitle;
+    const idDisplay = id ? ` | ID: ${id}` : '';
+    document.getElementById('student-info-display').innerText = `الطالب: ${name} | ${grade} (${branch})${idDisplay}`;
 
-  document.body.classList.add('exam-active-mode');
-  createSecurityWatermark(name, id);
+    // بناء الأسئلة وشريط التنقل السريع بينها
+    renderQuestions(currentExam.questions);
+    buildQuestionsNav();
+    restoreExamAnswersLocally();
 
-  isExamActive = true;
-  startTimer(res.exam.duration * 60);
-  updateProgressBar();
-  startCamAlertPolling();
-  enableScreenCaptureProtection();
+    // إخفاء الأقسام وإظهار قاعة الامتحان
+    document.getElementById('student-login').classList.add('hidden');
+    document.getElementById('navbar').classList.add('hidden');
+    document.getElementById('exam-room').classList.remove('hidden');
+
+    document.body.classList.add('exam-active-mode');
+    createSecurityWatermark(name, id);
+
+    isExamActive = true;
+    startTimer(durationMin * 60);
+    updateProgressBar();
+    startCamAlertPolling();
+    enableScreenCaptureProtection();
+  } catch (renderErr) {
+    console.error("Critical error while opening exam room:", renderErr);
+    Swal.fire('خطأ في واجهة الامتحان', 'حدث خطأ أثناء فتح واجهة الامتحان: ' + renderErr.message, 'error');
+  }
 }
 
 function renderQuestions(questions) {
@@ -346,19 +352,24 @@ function renderQuestions(questions) {
   const fragment = document.createDocumentFragment();
 
   questions.forEach((q, idx) => {
+    const qIndex = (q.index !== undefined && q.index !== null) ? q.index : idx;
     const card = document.createElement('div');
     card.className = 'question-card animate-fade-in';
-    card.id = `q-card-${q.index}`;
+    card.id = `q-card-${qIndex}`;
 
-    const safeText = escapeHTML(q.text);
+    const safeText = escapeHTML(q.text || '');
+
+    const opts = Array.isArray(q.options) && q.options.length > 0 
+      ? q.options 
+      : [q.opt1, q.opt2, q.opt3, q.opt4].filter(o => o !== undefined && o !== null && o !== '');
 
     let optionsHtml = '';
-    q.options.forEach((opt, optIdx) => {
+    opts.forEach((opt, optIdx) => {
       const safeOpt = escapeHTML(opt);
       const val = optIdx + 1;
       optionsHtml += `
-        <label class="option-label" onclick="selectOption(this, '${q.index}', '${val}')">
-          <input type="radio" name="q_${q.index}" value="${val}" class="option-radio">
+        <label class="option-label" onclick="selectOption(this, '${qIndex}', '${val}')">
+          <input type="radio" name="q_${qIndex}" value="${val}" class="option-radio">
           <span>${safeOpt}</span>
         </label>
       `;

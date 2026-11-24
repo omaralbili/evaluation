@@ -19,12 +19,20 @@ async function adminLogin(e) {
     }
 
     currentUser = res;
+    try {
+      sessionStorage.setItem('admin_user', JSON.stringify(res));
+    } catch (e) {}
     document.getElementById('dash-username').innerText = escapeHTML(res.name);
     showSection('dashboard');
     populateRegexInputs();
     loadAdminExamsList();
     loadFacultyAccountsList();
-    loadDashboardData();
+    if (typeof loadDashboardData === 'function') {
+      loadDashboardData();
+    }
+    if (typeof loadFacultyDashboard === 'function') {
+      loadFacultyDashboard();
+    }
   } else {
     Swal.fire('خطأ في تسجيل الدخول', res ? res.message : 'بيانات الدخول غير صحيحة', 'error');
   }
@@ -260,7 +268,12 @@ async function confirmCascadeDeleteFaculty(username, name) {
         Swal.fire('تم الحذف الشامل بنجاح', res.message, 'success');
         loadFacultyAccountsList();
         loadAdminExamsList();
-        loadDashboardData();
+        if (typeof loadDashboardData === 'function') {
+      loadDashboardData();
+    }
+    if (typeof loadFacultyDashboard === 'function') {
+      loadFacultyDashboard();
+    }
       } else {
         Swal.fire('خطأ', res ? res.message : 'تعذر تنفيذ الحذف', 'error');
       }
@@ -400,39 +413,113 @@ function filterResultsTable() {
 const debouncedFilterResultsTable = typeof debounce === 'function' ? debounce(filterResultsTable, 120) : filterResultsTable;
 
 async function exportResultsToExcel() {
-  // تحميل مكتبة التصدير كسلاً عند أول استخدام فقط
-  Swal.fire({
-    title: 'جاري تجهيز أداة التصدير...',
-    allowOutsideClick: false,
-    showConfirmButton: false,
-    didOpen: () => Swal.showLoading()
-  });
-  try {
-    await ensureXlsxLoaded();
-    Swal.close();
-  } catch (e) {
-    return Swal.fire('خطأ في التحميل', 'تعذر تحميل مكتبة التصدير. تحقق من اتصال الإنترنت وحاول مرة أخرى.', 'error');
-  }
-
   const table = document.getElementById('results-table');
   if (!table) return;
 
   const headerRow = table.querySelector('thead tr');
-  const bodyRows = Array.from(table.querySelectorAll('tbody tr')).filter(row => row.style.display !== 'none');
+  // جلب كافة الصفوف الصالحة في الجدول
+  const allRows = Array.from(table.querySelectorAll('tbody tr')).filter(row => row.cells.length > 1);
 
-  if (bodyRows.length === 0 || (bodyRows.length === 1 && bodyRows[0].cells.length <= 1)) {
-    return Swal.fire('تنبيه', 'لا توجد نتائج متاحة لتصديرها حالياً', 'warning');
+  if (allRows.length === 0) {
+    return Swal.fire('تنبيه', 'لا توجد نتائج مسجلة في الجدول حالياً لتصديرها', 'warning');
+  }
+
+  // استخراج جميع أكواد المقررات المميزة مع إحصاء عدد الطلاب لكل مقرر
+  const examCodeCounts = {};
+  allRows.forEach(row => {
+    const code = row.cells[1] ? row.cells[1].innerText.trim() : '';
+    if (code) {
+      examCodeCounts[code] = (examCodeCounts[code] || 0) + 1;
+    }
+  });
+
+  const uniqueCodes = Object.keys(examCodeCounts).sort();
+
+  // فحص إذا كان هناك فلتر حالي مكتوب في حقل البحث لتعيينه كاختيار افتراضي
+  const searchInput = document.getElementById('filter-exam-code') || document.getElementById('filter-faculty-results');
+  const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
+  const preSelectedCode = uniqueCodes.includes(searchVal) ? searchVal : 'ALL';
+
+  let selectOptionsHtml = `<option value="ALL" ${preSelectedCode === 'ALL' ? 'selected' : ''}>📋 جميع المقررات / كافة النتائج (${allRows.length} طالب)</option>`;
+  uniqueCodes.forEach(code => {
+    const isSel = code === preSelectedCode ? 'selected' : '';
+    selectOptionsHtml += `<option value="${escapeHTML(code)}" ${isSel}>📖 كود المقرر: ${escapeHTML(code)} (${examCodeCounts[code]} طالب)</option>`;
+  });
+
+  const { value: selectedCode, isConfirmed } = await Swal.fire({
+    title: 'تصدير كشف نتائج الطلاب (Excel)',
+    html: `
+      <div class="text-right text-xs space-y-3 py-1">
+        <label class="block font-bold text-slate-800 mb-1">حدد كود المقرر المراد تنزيل كشف درجاته:</label>
+        <select id="swal-export-exam-code" class="swal2-input !mt-0 !w-full text-xs font-bold text-slate-800" style="height: 44px; padding: 0 12px; border-radius: 8px;">
+          ${selectOptionsHtml}
+        </select>
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-xl text-[11px] leading-relaxed shadow-sm">
+          <div class="font-bold mb-1 flex items-center gap-1.5 text-emerald-700">
+            <i class="fa-solid fa-arrow-down-wide-short"></i> الترتيب المعتمد للكشف حسب الفروع:
+          </div>
+          <div class="flex items-center gap-2 font-extrabold text-emerald-800 mt-1">
+            <span class="bg-white border border-emerald-300 px-2 py-0.5 rounded shadow-2xs">1. المنصورة</span>
+            <span>←</span>
+            <span class="bg-white border border-emerald-300 px-2 py-0.5 rounded shadow-2xs">2. منية النصر</span>
+            <span>←</span>
+            <span class="bg-white border border-emerald-300 px-2 py-0.5 rounded shadow-2xs">3. ميت غمر</span>
+          </div>
+          <p class="text-[10px] text-emerald-600 mt-1.5">داخلياً لكل فرع: مرتب حسب الفرقة الدراسية (الأولى ← الرابعة)، ثم أبجدياً بأسماء الطلاب.</p>
+        </div>
+      </div>
+    `,
+    icon: 'info',
+    showCancelButton: true,
+    confirmButtonText: '<i class="fa-solid fa-file-excel ml-1.5"></i> تنزيل الكشف مرتباً بالفروع',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#059669',
+    cancelButtonColor: '#64748b',
+    preConfirm: () => {
+      const sel = document.getElementById('swal-export-exam-code');
+      return sel ? sel.value : 'ALL';
+    }
+  });
+
+  if (!isConfirmed || !selectedCode) return;
+
+  // تحميل مكتبة Excel كسلاً عند أول استخدام فقط
+  Swal.fire({
+    title: 'جاري تجهيز وتنسيق ملف Excel...',
+    allowOutsideClick: false,
+    showConfirmButton: false,
+    didOpen: () => Swal.showLoading()
+  });
+
+  try {
+    await ensureXlsxLoaded();
+  } catch (e) {
+    return Swal.fire('خطأ في التحميل', 'تعذر تحميل مكتبة التصدير. تحقق من اتصال الإنترنت وحاول مرة أخرى.', 'error');
+  }
+
+  // تصفية الصفوف بحسب الكود المختار
+  let targetRows = allRows;
+  if (selectedCode !== 'ALL') {
+    targetRows = allRows.filter(row => {
+      const code = row.cells[1] ? row.cells[1].innerText.trim().toUpperCase() : '';
+      return code === selectedCode.toUpperCase();
+    });
+  }
+
+  if (targetRows.length === 0) {
+    Swal.close();
+    return Swal.fire('تنبيه', `لا توجد نتائج مسجلة لكود المقرر (${selectedCode})`, 'warning');
   }
 
   // رؤوس الأعمدة
   const headerCells = Array.from(headerRow.querySelectorAll('th')).map(th => th.innerText.trim());
 
   // استخراج بيانات الصفوف
-  let dataRows = bodyRows.map(row => {
+  let dataRows = targetRows.map(row => {
     return Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim());
   });
 
-  // تحديد أولويات الترتيب للفروع: المنصورة ثم منية النصر ثم ميت غمر
+  // تحديد أولويات الترتيب للفروع بدقة متناهية: المنصورة (1) ثم منية النصر (2) ثم ميت غمر (3)
   const branchPriority = {
     'المنصورة': 1,
     'منية النصر': 2,
@@ -458,29 +545,27 @@ async function exportResultsToExcel() {
     'الرابعة': 4
   };
 
-  // ترتيب البيانات: فرع المنصورة ثم منية النصر ثم ميت غمر، وداخل كل فرع: الأولى ثم الثانية ثم الثالثة ثم الرابعة
+  // ترتيب البيانات: 1. الفروع (المنصورة -> منية النصر -> ميت غمر) 2. الفرق 3. أسماء الطلاب أبجدياً
   dataRows.sort((a, b) => {
-    // عمود الفرقة هو الفهرس 4 وعمود الفرع هو الفهرس 5
-    const gradeA = a[4] || '';
-    const gradeB = b[4] || '';
-    const branchA = a[5] || '';
-    const branchB = b[5] || '';
-
-    const branchOrderA = branchPriority[branchA] || 99;
-    const branchOrderB = branchPriority[branchB] || 99;
+    // عمود الفرقة هو الفهرس 4 وعمود الفرع هو الفهرس 5 وعمود الاسم الفهرس 2
+    const branchA = (a[5] || '').trim();
+    const branchB = (b[5] || '').trim();
+    const branchOrderA = branchPriority[branchA] !== undefined ? branchPriority[branchA] : 99;
+    const branchOrderB = branchPriority[branchB] !== undefined ? branchPriority[branchB] : 99;
 
     if (branchOrderA !== branchOrderB) {
       return branchOrderA - branchOrderB;
     }
 
-    const gradeOrderA = gradePriority[gradeA] || 99;
-    const gradeOrderB = gradePriority[gradeB] || 99;
+    const gradeA = (a[4] || '').trim();
+    const gradeB = (b[4] || '').trim();
+    const gradeOrderA = gradePriority[gradeA] !== undefined ? gradePriority[gradeA] : 99;
+    const gradeOrderB = gradePriority[gradeB] !== undefined ? gradePriority[gradeB] : 99;
 
     if (gradeOrderA !== gradeOrderB) {
       return gradeOrderA - gradeOrderB;
     }
 
-    // إذا تساوى الفرع والفرقة يتم الترتيب حسب اسم الطالب أفقياً
     const nameA = a[2] || '';
     const nameB = b[2] || '';
     return nameA.localeCompare(nameB, 'ar');
@@ -493,64 +578,132 @@ async function exportResultsToExcel() {
   const ws = XLSX.utils.aoa_to_sheet(finalSheetData);
 
   ws['!cols'] = [
-    { wch: 20 }, // التاريخ والوقت
+    { wch: 22 }, // التاريخ والوقت
     { wch: 15 }, // كود الامتحان
-    { wch: 26 }, // اسم الطالب
+    { wch: 28 }, // اسم الطالب
     { wch: 16 }, // الرقم التعريفي
     { wch: 16 }, // الفرقة
     { wch: 16 }, // الفرع
     { wch: 18 }, // كلمة المرور
-    { wch: 12 }, // النتيجة
-    { wch: 30 }  // حالة التسليم
+    { wch: 14 }, // النتيجة
+    { wch: 32 }  // حالة التسليم
   ];
 
   if (!wb.Workbook) wb.Workbook = {};
   if (!wb.Workbook.Views) wb.Workbook.Views = [];
   wb.Workbook.Views[0] = { RTL: true };
 
-  XLSX.utils.book_append_sheet(wb, ws, 'النتائج مرتبة');
+  const sheetTitle = selectedCode !== 'ALL' ? `نتائج ${selectedCode}` : 'النتائج مرتبة فروع';
+  XLSX.utils.book_append_sheet(wb, ws, sheetTitle.slice(0, 31));
 
-  const filterInput = document.getElementById('filter-exam-code') || document.getElementById('filter-faculty-results');
-  const filterVal = filterInput ? filterInput.value.trim() : '';
-  const fileName = filterVal
-    ? `نتائج_مرتبة_${filterVal}_${new Date().toISOString().slice(0, 10)}.xlsx`
-    : `كشف_النتائج_مرتباً_فروع_وفرق_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const fileName = selectedCode !== 'ALL'
+    ? `نتائج_مقرر_${selectedCode}_مرتبة_بالفروع_${dateStr}.xlsx`
+    : `كشف_نتائج_جميع_المقررات_مرتبة_بالفروع_${dateStr}.xlsx`;
 
   XLSX.writeFile(wb, fileName);
+  Swal.close();
+
+  // إشعار تأكيد التصدير
+  Swal.fire({
+    title: 'تم التصدير بنجاح!',
+    text: `تم تنزيل كشف Excel (${fileName}) متضمناً ${dataRows.length} نتيجة مرتبة بالفروع بنجاح.`,
+    icon: 'success',
+    timer: 2600,
+    showConfirmButton: false
+  });
 }
 
 async function confirmClearResultsAdmin() {
-  Swal.fire({
-    title: 'تأكيد تفريغ نتائج الطلاب',
-    text: 'تأكد من تنزيل كشف الـ Excel أولاً. هل تريد بالتأكيد تفريغ ومسح جميع نتائج الطلاب من قاعدة البيانات؟',
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'نعم، مسح وتفريغ الكل',
-    cancelButtonText: 'إلغاء',
-    confirmButtonColor: '#e11d48',
-    cancelButtonColor: '#64748b'
-  }).then(async (result) => {
-    if (result.isConfirmed) {
-      const filterVal = document.getElementById('filter-exam-code') ? document.getElementById('filter-exam-code').value.trim() : '';
-      const res = await apiCall({
-        action: 'clear_results',
-        exam_code: filterVal,
-        creator: currentUser ? currentUser.username : '',
-        role: currentUser ? currentUser.role : 'admin'
-      });
+  const table = document.getElementById('results-table');
+  const allRows = table ? Array.from(table.querySelectorAll('tbody tr')).filter(row => row.cells.length > 1) : [];
 
-      if (res && res.status === 'success') {
-        Swal.fire('تم التفريغ بنجاح', res.message, 'success');
-        loadDashboardData();
-      } else {
-        Swal.fire('خطأ', res ? res.message : 'تعذر مسح النتائج', 'error');
-      }
+  if (allRows.length === 0) {
+    return Swal.fire('تنبيه', 'لا توجد نتائج مسجلة في الجدول لتفريغها حالياً', 'warning');
+  }
+
+  // استخراج الأكواد المميزة وعدد النتائج لكل كود
+  const examCodeCounts = {};
+  allRows.forEach(row => {
+    const code = row.cells[1] ? row.cells[1].innerText.trim() : '';
+    if (code) {
+      examCodeCounts[code] = (examCodeCounts[code] || 0) + 1;
     }
   });
+
+  const uniqueCodes = Object.keys(examCodeCounts).sort();
+
+  // فحص كود البحث الحالي إن وجد كخيار افتراضي
+  const searchInput = document.getElementById('filter-exam-code');
+  const currentSearch = searchInput ? searchInput.value.trim().toUpperCase() : '';
+  const preSelectedCode = uniqueCodes.includes(currentSearch) ? currentSearch : 'ALL';
+
+  let selectOptionsHtml = `<option value="ALL" ${preSelectedCode === 'ALL' ? 'selected' : ''}>🔴 تفريغ ومسح جميع النتائج لجميع المقررات بالكامل (${allRows.length} نتيجة)</option>`;
+  uniqueCodes.forEach(code => {
+    const isSel = code === preSelectedCode ? 'selected' : '';
+    selectOptionsHtml += `<option value="${escapeHTML(code)}" ${isSel}>🗑️ مسح نتائج كود المقرر (${escapeHTML(code)}) فقط (${examCodeCounts[code]} نتيجة)</option>`;
+  });
+
+  const { value: targetCode, isConfirmed } = await Swal.fire({
+    title: 'تفريغ ومسح نتائج الطلاب',
+    html: `
+      <div class="text-right text-xs space-y-3 py-1">
+        <p class="text-slate-600 font-medium leading-relaxed">تأكد من تنزيل كشف الـ Excel أولاً لحفظ نسخة احتياطية من الدرجات.</p>
+        <label class="block font-bold text-slate-800 mb-1">حدد نطاق التفريغ (مسح الكل أو كود مقرر محدد):</label>
+        <select id="swal-clear-scope" class="swal2-input !mt-0 !w-full text-xs font-bold text-rose-700" style="height: 44px; padding: 0 12px; border-radius: 8px;">
+          ${selectOptionsHtml}
+        </select>
+        <div class="bg-amber-50 border border-amber-200 text-amber-900 p-2.5 rounded-xl text-[11px] leading-relaxed">
+          <i class="fa-solid fa-shield-halved ml-1 text-amber-600"></i>
+          <b>أمان البيانات:</b> سيتم حفظ نسخة مؤرشفة في شيت النسخ الاحتياطي (ResultsBackup) تلقائياً قبل تنفيذ عملية المسح.
+        </div>
+      </div>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: '<i class="fa-solid fa-trash-can ml-1.5"></i> تأكيد مسح النتائج المحددة',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#e11d48',
+    cancelButtonColor: '#64748b',
+    preConfirm: () => {
+      const sel = document.getElementById('swal-clear-scope');
+      return sel ? sel.value : 'ALL';
+    }
+  });
+
+  if (!isConfirmed || !targetCode) return;
+
+  const res = await apiCall({
+    action: 'clear_results',
+    exam_code: targetCode,
+    creator: currentUser ? currentUser.username : 'admin',
+    role: currentUser ? currentUser.role : 'admin'
+  });
+
+  if (res && res.status === 'success') {
+    Swal.fire({
+      title: 'تم التفريغ بنجاح',
+      text: res.message,
+      icon: 'success',
+      confirmButtonText: 'حسناً',
+      confirmButtonColor: '#059669'
+    });
+    if (typeof loadDashboardData === 'function') {
+      loadDashboardData();
+    }
+    if (typeof loadFacultyDashboard === 'function') {
+      loadFacultyDashboard();
+    }
+  } else {
+    Swal.fire('خطأ', res ? res.message : 'تعذر مسح النتائج', 'error');
+  }
 }
 
 function logoutAdmin() {
   currentUser = null;
+  try {
+    sessionStorage.removeItem('admin_user');
+  } catch (e) {}
   showSection('student-login');
 }
 

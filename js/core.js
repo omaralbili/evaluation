@@ -95,6 +95,7 @@ function debounce(fn, delay = 200) {
 }
 
 function secureShuffleArray(arr) {
+  if (!arr || !Array.isArray(arr) || arr.length === 0) return [];
   const array = [...arr];
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));

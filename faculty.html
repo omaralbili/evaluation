@@ -834,49 +834,7 @@
     }
 
     async function confirmClearResults() {
-      const filterInput = document.getElementById('filter-faculty-results');
-      const filterVal = filterInput ? filterInput.value.trim().toUpperCase() : '';
-
-      const { value: targetExamCode } = await Swal.fire({
-        title: 'تأكيد تفريغ نتائج اختبار',
-        html: `
-          <div class="text-right text-xs space-y-2 mt-2">
-            <p>تأكد من تنزيل ملف الـ Excel أولاً لحفظ نسخة قبل المسح.</p>
-            <p class="font-bold text-slate-700">أدخل كود الامتحان المراد مسح نتائجه:</p>
-          </div>
-        `,
-        input: 'text',
-        inputValue: filterVal,
-        inputPlaceholder: 'مثال: EX-1234',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'تفريغ نتائج هذا الامتحان',
-        cancelButtonText: 'إلغاء',
-        confirmButtonColor: '#e11d48',
-        cancelButtonColor: '#64748b',
-        inputValidator: (val) => {
-          if (!val || !val.trim()) {
-            return 'يرجى كتابة كود الامتحان المطلوب تفريغ نتائجه';
-          }
-        }
-      });
-
-      if (targetExamCode) {
-        const cleanCode = targetExamCode.trim().toUpperCase();
-        const res = await apiCall({
-          action: 'clear_results',
-          exam_code: cleanCode,
-          creator: currentUser ? currentUser.username : '',
-          role: currentUser ? currentUser.role : ''
-        });
-
-        if (res && res.status === 'success') {
-          Swal.fire('تم التفريغ بنجاح', res.message, 'success');
-          loadFacultyDashboard();
-        } else {
-          Swal.fire('خطأ', res ? res.message : 'تعذر مسح النتائج', 'error');
-        }
-      }
+      return confirmClearResultsAdmin();
     }
 
     // ==========================================
