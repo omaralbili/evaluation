@@ -1019,6 +1019,43 @@ body.exam-active-mode {
   color: #ffffff;
 }
 
+.q-nav-btn.is-flagged {
+  border-color: #f59e0b !important;
+  color: #b45309 !important;
+  position: relative;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+}
+
+.q-nav-btn.is-flagged::after {
+  content: '★';
+  position: absolute;
+  top: -4px;
+  right: -3px;
+  font-size: 9px;
+  color: #f59e0b;
+  background: #ffffff;
+  border-radius: 50%;
+  line-height: 1;
+}
+
+.q-nav-btn.is-answered.is-flagged {
+  background: var(--emerald-600);
+  border-color: #f59e0b !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="dark"] .q-nav-btn.is-flagged,
+html.dark .q-nav-btn.is-flagged {
+  color: #fbbf24 !important;
+  background: #292524;
+}
+
+html[data-theme="dark"] .q-nav-btn.is-flagged::after,
+html.dark .q-nav-btn.is-flagged::after {
+  background: #1c1917;
+  color: #fbbf24;
+}
+
 html[data-theme="dark"] .q-nav-btn,
 html.dark .q-nav-btn {
   background: #1e293b;

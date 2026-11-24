@@ -13,10 +13,11 @@ function handleViolation(reason) {
       icon: 'warning',
       confirmButtonText: 'العودة للامتحان فوراً',
       confirmButtonColor: '#e11d48',
-      allowOutsideClick: false
+      allowOutsideClick: false,
+      allowEscapeKey: false
     }).then(() => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
+      if (!document.fullscreenElement && isFullscreenSupported()) {
+        restoreExamFullscreen();
       }
     });
   } else {
@@ -171,6 +172,12 @@ function triggerThreatAlert(reason) {
     const dashboard = document.getElementById('dashboard');
     if (dashboard && !dashboard.classList.contains('hidden')) return; // استثناء لوحة الإدارة
 
+    // حصر فحص الفارق في أبعاد الشاشة على أجهزة الديسكتوب واللابتوب فقط لمنع أي تعارض مع تكبير الموبايل
+    if (!isLaptopOrTabletDevice() || window.innerWidth < 650) {
+      devtoolsSuspectStreak = 0;
+      return;
+    }
+
     const widthDiff = window.outerWidth - window.innerWidth;
     const heightDiff = window.outerHeight - window.innerHeight;
     const suspicious = widthDiff > 260 || heightDiff > 320;
@@ -229,6 +236,18 @@ document.addEventListener('keydown', e => {
 // 3.1 نظام الحماية المتقدمة والمطلقة ضد تسجيل ولقطات الشاشة (Screen Capture & Recording Prevention)
 // ==========================================
 
+// فترة سماح مؤقتة عند الدخول للامتحان (15 ثانية):
+// تمنع احتساب نافذة المتصفح "هل تريد حفظ كلمة المرور؟" أو أذونات الكاميرا والشاشة كمحاولة غش أو تعتيم
+let examGracePeriodEnd = 0;
+
+function startExamGracePeriod(durationSeconds = 15) {
+  examGracePeriodEnd = Date.now() + durationSeconds * 1000;
+}
+
+function isExamInGracePeriod() {
+  return isExamActive && Date.now() < examGracePeriodEnd;
+}
+
 let screenProtectionActive = false;
 let blackoutOverlay = null;
 let isBlackoutActive = false;
@@ -236,7 +255,7 @@ let blackoutStartedAt = 0;
 
 // إظهار شاشة سوداء كاملة فورية وتفريغ عناصر الامتحان من العرض
 function showPersistentBlackout(reason) {
-  if (!isExamActive || isActivatingCamera) return;
+  if (!isExamActive || isActivatingCamera || isExamInGracePeriod()) return;
   if (!isBlackoutActive) blackoutStartedAt = Date.now();
   isBlackoutActive = true;
 
@@ -262,7 +281,10 @@ function showPersistentBlackout(reason) {
 
 // استعادة الشاشة فقط بعد أن يعود الطالب للنافذة ويقر بالتحذير
 function handleReturnFromBlur(reason) {
-  if (!isExamActive || isActivatingCamera || !isBlackoutActive) return;
+  if (!isExamActive || isActivatingCamera || isExamInGracePeriod() || !isBlackoutActive) {
+    if (isBlackoutActive) removeBlackout();
+    return;
+  }
 
   // فترة سماح عادلة: اللمحات العارضة (شريط الإشعارات، تنبيه مؤقت، لمسة زر) لا تُحتسب مخالفة
   // تُحتسب المغادرة مخالفة فقط إذا استمرت ثانيتين فأكثر
@@ -302,19 +324,19 @@ function triggerBlackout(reason) {
 
 // 1. مراقبة مغادرة الصفحة أو سحب شريط الإشعارات/الاختصارات في الموبايل
 window.addEventListener('blur', () => {
-  if (isExamActive && !isActivatingCamera) {
+  if (isExamActive && !isActivatingCamera && !isExamInGracePeriod()) {
     showPersistentBlackout('فقدان التركيز على شاشة الامتحان أو محاولة تسجيل الشاشة');
   }
 });
 
 window.addEventListener('focus', () => {
-  if (isExamActive && isBlackoutActive && !isActivatingCamera) {
+  if (isExamActive && isBlackoutActive && !isActivatingCamera && !isExamInGracePeriod()) {
     handleReturnFromBlur('العودة بعد مغادرة نافذة الامتحان');
   }
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (isExamActive && !isActivatingCamera) {
+  if (isExamActive && !isActivatingCamera && !isExamInGracePeriod()) {
     if (document.hidden) {
       showPersistentBlackout('مغادرة نافذة الامتحان أو التبديل لتطبيق آخر');
     } else if (isBlackoutActive) {
@@ -323,12 +345,120 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-document.addEventListener('fullscreenchange', () => {
-  if (isExamActive && !document.fullscreenElement) {
-    if (isActivatingCamera) return;
-    showPersistentBlackout('الخروج من وضع ملء الشاشة');
-    handleReturnFromBlur('الخروج من وضع ملء الشاشة');
+// ==========================================
+// 3.01 منظومة الفرض الصارم لوضع ملء الشاشة وحظر زر Esc
+// ==========================================
+
+let fullscreenEnforcerModal = null;
+
+function isFullscreenSupported() {
+  return !!(
+    document.fullscreenEnabled ||
+    document.webkitFullscreenEnabled ||
+    document.mozFullScreenEnabled ||
+    document.msFullscreenEnabled
+  );
+}
+
+function createFullscreenEnforcerDOM() {
+  if (fullscreenEnforcerModal) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'fullscreen-enforcer-modal';
+  overlay.className = 'fixed inset-0 bg-slate-950/95 z-[99999] flex items-center justify-center p-4 text-center hidden';
+  overlay.innerHTML = `
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 md:p-8 shadow-2xl border-2 border-rose-500/40 space-y-4 animate-fade-in text-slate-800 dark:text-slate-100">
+      <div class="w-16 h-16 bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto text-3xl border border-rose-300 dark:border-rose-800 shadow-inner">
+        <i class="fa-solid fa-expand"></i>
+      </div>
+      <h3 class="text-xl font-black text-slate-900 dark:text-white">وضع ملء الشاشة إلزامي!</h3>
+      <p class="text-xs md:text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+        تم رصد الخروج من وضع ملء الشاشة (الضغط على Esc أو تصغير النافذة). يُمنع منعاً باتاً عرض أو متابعة حل الامتحان خارج وضع الشاشة الكاملة لضمان النزاهة التامة ومنع التبديل بين النوافذ.
+      </p>
+      <div class="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs p-3 rounded-2xl border border-rose-200 dark:border-rose-900 font-bold flex items-center gap-2 text-right">
+        <i class="fa-solid fa-triangle-exclamation text-rose-500 text-lg flex-shrink-0"></i>
+        <span>تم تسجيل هذه المحاولة كمخالفة في سجل المراقبة. تكرار ذلك سيؤدي لإغلاق الامتحان فوراً ورصد درجتك الحالية!</span>
+      </div>
+      <button type="button" id="restore-fullscreen-btn" onclick="restoreExamFullscreen()" class="btn btn-danger w-full py-3 text-sm font-bold shadow-lg shadow-rose-500/25 rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all">
+        <i class="fa-solid fa-arrows-to-eye ml-1.5"></i> العودة لملء الشاشة واستئناف الامتحان
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  fullscreenEnforcerModal = overlay;
+}
+
+function showFullscreenEnforcerModal() {
+  createFullscreenEnforcerDOM();
+  if (fullscreenEnforcerModal) {
+    fullscreenEnforcerModal.classList.remove('hidden');
   }
+  // إخفاء فوري وتام لغرفة الامتحان والأسئلة بحيث يستحيل الغش أو قراءة الأسئلة خارج وضع ملء الشاشة
+  const examRoom = document.getElementById('exam-room');
+  if (examRoom) {
+    examRoom.style.visibility = 'hidden';
+    examRoom.style.pointerEvents = 'none';
+  }
+}
+
+function hideFullscreenEnforcerModal() {
+  if (fullscreenEnforcerModal) {
+    fullscreenEnforcerModal.classList.add('hidden');
+  }
+  const examRoom = document.getElementById('exam-room');
+  if (examRoom) {
+    examRoom.style.visibility = 'visible';
+    examRoom.style.pointerEvents = 'auto';
+  }
+}
+
+async function restoreExamFullscreen() {
+  try {
+    if (document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+    } else if (document.documentElement.webkitRequestFullscreen) {
+      await document.documentElement.webkitRequestFullscreen();
+    }
+  } catch (e) {
+    console.warn("Fullscreen request error:", e);
+  }
+
+  // محاولة قفل زر الـ Escape فور إعادة الدخول
+  try {
+    if (navigator.keyboard && navigator.keyboard.lock) {
+      await navigator.keyboard.lock(['Escape']);
+    }
+  } catch (e) {}
+
+  hideFullscreenEnforcerModal();
+}
+
+function handleFullscreenChange() {
+  if (!isExamActive || isActivatingCamera || isExamInGracePeriod()) return;
+
+  const isFs = !!(
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.mozFullScreenElement ||
+    document.msFullscreenElement
+  );
+
+  if (!isFs) {
+    if (isFullscreenSupported()) {
+      showFullscreenEnforcerModal();
+      handleViolation('الخروج من وضع ملء الشاشة (الضغط على Esc أو محاولة تصغير النافذة)');
+    }
+  } else {
+    hideFullscreenEnforcerModal();
+    try {
+      if (navigator.keyboard && navigator.keyboard.lock) {
+        navigator.keyboard.lock(['Escape']).catch(() => {});
+      }
+    } catch (e) {}
+  }
+}
+
+['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(evt => {
+  document.addEventListener(evt, handleFullscreenChange);
 });
 
 // منع مغادرة أو تحديث صفحة الامتحان (الدخول لمرة واحدة فقط لعند ما يسلم)
@@ -472,15 +602,20 @@ function disableScreenCaptureProtection() {
   document.removeEventListener('click', handleExamScreenStrictClick, true);
 }
 
-// حظر إيماءات اللمس المتعدد في الموبايل فوراً
+// حظر إيماءات لقطة الشاشة في الموبايل مع السماح التام بإصبعين للتكبير والتصغير (Pinch-to-Zoom)
 function handleMobileTouchRestrictions(e) {
   if (!isExamActive) return;
 
-  // إذا تم اللمس بأكثر من إصبع واحد (3 أصابع للقطة الشاشة أو إصبعين للتكبير)
-  if (e.touches && e.touches.length > 1) {
+  // السماح بحرية كاملة باللمس بإصبعين للتكبير وتصغير الشاشة (Pinch to Zoom) في الموبايل
+  if (e.touches && e.touches.length === 2) {
+    return;
+  }
+
+  // إذا تم اللمس بـ 3 أصابع أو أكثر (إيماءات لقطة الشاشة الشهيرة في هواتف شاومي، أوبو، سامسونج وغيرها)
+  if (e.touches && e.touches.length >= 3) {
     e.preventDefault();
     e.stopPropagation();
-    showPersistentBlackout('تم حظر لمس متعدد محظور (إيماءة لقطة شاشة)');
+    showPersistentBlackout('تم حظر إيماءة لقطة الشاشة (لمس 3 أصابع)');
     setTimeout(() => {
       handleReturnFromBlur('محاولة أخذ لقطة شاشة عبر اللمس المتعدد');
     }, 1000);
@@ -490,14 +625,21 @@ function handleMobileTouchRestrictions(e) {
 
 function handleMobileTouchMove(e) {
   if (!isExamActive) return;
-  if (e.touches && e.touches.length > 1) {
+
+  // السماح بحرية بحركة إصبعين للزووم
+  if (e.touches && e.touches.length === 2) {
+    return;
+  }
+
+  // حظر سحب 3 أصابع لالتقاط الشاشة
+  if (e.touches && e.touches.length >= 3) {
     e.preventDefault();
     e.stopPropagation();
     return false;
   }
 }
 
-// تقييد النقرات والتفاعل: يُسمح فقط باختيار الإجابة، أو فتح الكاميرا، أو تسليم الاختبار، أو شريط التنقل والوضع الليلي
+// تقييد النقرات والتفاعل: يُسمح فقط باختيار الإجابة، أو تكبير الخط، أو فتح الكاميرا، أو تسليم الاختبار، أو شريط التنقل والوضع الليلي وتحديد المراجعة
 function handleExamScreenStrictClick(e) {
   if (!isExamActive) return;
 
@@ -507,7 +649,12 @@ function handleExamScreenStrictClick(e) {
                     target.closest('input[type="radio"]') ||
                     target.closest('.q-img-thumb') ||
                     target.closest('.q-nav-btn') ||
+                    target.closest('.q-flag-btn') ||
                     target.closest('.theme-toggle-btn') ||
+                    target.closest('#network-offline-banner') ||
+                    target.closest('#fullscreen-enforcer-modal') ||
+                    target.closest('#restore-fullscreen-btn') ||
+                    target.closest('button[onclick*="adjustExamFontSize"]') ||
                     target.closest('#student-camera-btn') ||
                     target.closest('#student-cam-preview-box') ||
                     target.closest('button[onclick*="Exit"]') ||

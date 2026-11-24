@@ -268,14 +268,23 @@ async function startStudentExam(e) {
     localStorage.setItem(sessionKey, 'started_' + Date.now());
   } catch(e) {}
 
-  // محاولة الدخول لوضع ملء الشاشة
+  // محاولة الدخول لوضع ملء الشاشة وفرض قفل زر Esc
   try {
     if (document.documentElement.requestFullscreen) {
       await document.documentElement.requestFullscreen();
+    } else if (document.documentElement.webkitRequestFullscreen) {
+      await document.documentElement.webkitRequestFullscreen();
     }
   } catch (err) {
     console.warn("Fullscreen permission blocked or not permitted directly");
   }
+
+  // محاولة قفل زر الـ Escape في المتصفح لمنع الخروج
+  try {
+    if (navigator.keyboard && navigator.keyboard.lock) {
+      await navigator.keyboard.lock(['Escape']);
+    }
+  } catch (e) {}
 
   try {
     const rawQList = Array.isArray(res.questions) ? res.questions : [];
@@ -335,6 +344,9 @@ async function startStudentExam(e) {
     createSecurityWatermark(name, id);
 
     isExamActive = true;
+    if (typeof startExamGracePeriod === 'function') {
+      startExamGracePeriod(15); // فترة سماح 15 ثانية لمنع تعارض نوافذ المتصفح الافتراضية
+    }
     startTimer(durationMin * 60);
     updateProgressBar();
     startCamAlertPolling();
@@ -391,9 +403,19 @@ function renderQuestions(questions) {
       `;
     }
 
+    const isFlagged = flaggedQuestions.has(String(qIndex));
+    const flagBtnClass = isFlagged 
+      ? 'q-flag-btn text-xs font-bold px-2.5 py-1 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-600 transition-colors flex items-center gap-1.5'
+      : 'q-flag-btn text-xs font-bold px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-amber-500 hover:border-amber-300 transition-colors flex items-center gap-1.5';
+    const flagIconClass = isFlagged ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark';
+    const flagText = isFlagged ? 'مُميز للمراجعة' : 'مراجعة لاحقاً';
+
     card.innerHTML = `
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">السؤال ${idx + 1} من ${questions.length}</span>
+        <span class="text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 px-2.5 py-1 rounded-md">السؤال ${idx + 1} من ${questions.length}</span>
+        <button type="button" class="${flagBtnClass}" onclick="toggleQuestionFlag('${qIndex}', this)">
+          <i class="${flagIconClass}"></i> <span>${flagText}</span>
+        </button>
       </div>
       <p class="font-bold text-base md:text-lg mb-3 text-slate-900 leading-relaxed">${safeText}</p>
       ${imageHtml}
@@ -421,12 +443,103 @@ function showQuestionImageModal(src) {
     imageAlt: 'صورة السؤال التوضيحية',
     showCloseButton: true,
     showConfirmButton: false,
+    allowEscapeKey: false,
     width: 'auto',
     padding: '0.8rem',
     customClass: {
       image: 'max-h-[75vh] w-auto object-contain rounded-lg shadow-sm m-0'
     }
   });
+}
+
+// تعديل حجم خط الأسئلة لدعم شاشات الهواتف والطلبة بسهولة وبدون أي تشويش
+let currentExamFontSize = 16;
+function adjustExamFontSize(delta) {
+  currentExamFontSize = Math.min(24, Math.max(12, currentExamFontSize + delta * 2));
+  const container = document.getElementById('questions-container');
+  if (container) {
+    container.style.fontSize = `${currentExamFontSize}px`;
+    container.querySelectorAll('.question-card').forEach(card => {
+      card.style.fontSize = `${currentExamFontSize}px`;
+    });
+  }
+}
+
+// منظومة تمييز الأسئلة للمراجعة اللاحقة (Flag for Review)
+let flaggedQuestions = new Set();
+
+function toggleQuestionFlag(qIndex, btn) {
+  const strIndex = String(qIndex);
+  if (flaggedQuestions.has(strIndex)) {
+    flaggedQuestions.delete(strIndex);
+    if (btn) {
+      btn.className = 'q-flag-btn text-xs font-bold px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-amber-500 hover:border-amber-300 transition-colors flex items-center gap-1.5';
+      btn.innerHTML = '<i class="fa-regular fa-bookmark"></i> <span>مراجعة لاحقاً</span>';
+    }
+  } else {
+    flaggedQuestions.add(strIndex);
+    if (btn) {
+      btn.className = 'q-flag-btn text-xs font-bold px-2.5 py-1 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-600 transition-colors flex items-center gap-1.5';
+      btn.innerHTML = '<i class="fa-solid fa-bookmark"></i> <span>مُميز للمراجعة</span>';
+    }
+  }
+  updateFlaggedCounter();
+  updateQuestionsNavState();
+}
+
+function updateFlaggedCounter() {
+  const el = document.getElementById('exam-flagged-count');
+  if (!el) return;
+  if (flaggedQuestions.size > 0) {
+    el.innerHTML = `<i class="fa-solid fa-bookmark ml-1"></i> للمراجعة: ${flaggedQuestions.size}`;
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
+// مؤشر الحفظ التلقائي الفوري المرئي في شريط الامتحان
+let autosaveIndicatorTimer = null;
+function showAutoSaveIndicator() {
+  const el = document.getElementById('exam-autosave-indicator');
+  if (!el) return;
+  el.classList.remove('opacity-0');
+  if (autosaveIndicatorTimer) clearTimeout(autosaveIndicatorTimer);
+  autosaveIndicatorTimer = setTimeout(() => {
+    el.classList.add('opacity-0');
+  }, 1800);
+}
+
+// مراقبة الاتصال وحالة الشبكة الذكية
+function initNetworkHealthMonitor() {
+  window.addEventListener('offline', () => {
+    if (isExamActive) {
+      const banner = document.getElementById('network-offline-banner');
+      const text = document.getElementById('network-offline-banner-text');
+      if (banner) {
+        banner.className = 'bg-amber-600 text-white text-xs px-4 py-2 font-bold text-center flex items-center justify-center gap-2 sticky top-0 z-40 animate-pulse';
+        if (text) text.innerText = 'انقطع اتصال الإنترنت مؤقتاً - لا تقلق! إجاباتك محفوظة بالكامل على جهازك، ويمكنك الاستمرار في الحل وسيتم المزامنة تلقائياً.';
+        banner.classList.remove('hidden');
+      }
+    }
+  });
+
+  window.addEventListener('online', () => {
+    if (isExamActive) {
+      const banner = document.getElementById('network-offline-banner');
+      const text = document.getElementById('network-offline-banner-text');
+      if (banner) {
+        banner.className = 'bg-emerald-600 text-white text-xs px-4 py-2 font-bold text-center flex items-center justify-center gap-2 sticky top-0 z-40';
+        if (text) text.innerText = '✅ تم استعادة الاتصال بالإنترنت بنجاح - جميع إجاباتك متزامنة ومؤمنة.';
+        setTimeout(() => {
+          banner.classList.add('hidden');
+        }, 3000);
+      }
+    }
+  });
+}
+if (typeof window !== 'undefined') {
+  initNetworkHealthMonitor();
 }
 
 // معالجة فورية فائقة السرعة O(1) لاختيار الإجابة دون أي مسح بطيء لكامل شجرة الـ DOM
@@ -445,6 +558,7 @@ function selectOption(labelEl, questionIndex, value) {
   // تحديث شريط التقدم وزر التنقل الخاص بهذا السؤال مباشرة في جزء من المللي ثانية
   fastUpdateProgressAndNav(questionIndex);
   saveExamAnswersLocally(); // حفظ تلقائي فوري
+  showAutoSaveIndicator();  // إشعار مرئي سلس بالحفظ
 }
 
 function fastUpdateProgressAndNav(lastAnsweredIndex) {
@@ -536,7 +650,9 @@ function updateQuestionsNavState() {
     const btn = document.getElementById(`q-nav-${q.index}`);
     if (!btn) return;
     const answered = Object.prototype.hasOwnProperty.call(examAnswers, String(q.index));
+    const flagged = flaggedQuestions ? flaggedQuestions.has(String(q.index)) : false;
     btn.classList.toggle('is-answered', answered);
+    btn.classList.toggle('is-flagged', flagged);
   });
 }
 
@@ -583,9 +699,17 @@ function confirmExitAndSubmit() {
   }
 
   const unAnswered = total - answered;
+  const flaggedCount = flaggedQuestions ? flaggedQuestions.size : 0;
   let textMsg = 'هل أنت متأكد من حفظ إجاباتك والخروج من الامتحان؟';
+  const notes = [];
   if (unAnswered > 0) {
-    textMsg = `تنبيه: يوجد ${unAnswered} أسئلة لم تجب عليها. عند الخروج سيتم رصد الدرجة للإجابات المحلولة فقط وإنهاء الجلسة.`;
+    notes.push(`⚠️ يوجد ${unAnswered} أسئلة لم تجب عليها.`);
+  }
+  if (flaggedCount > 0) {
+    notes.push(`⭐ يوجد ${flaggedCount} أسئلة قمت بتمييزها للمراجعة.`);
+  }
+  if (notes.length > 0) {
+    textMsg = `${notes.join(' ')} عند تأكيد الخروج سيتم رصد الدرجة للإجابات المحلولة فقط وإنهاء الجلسة.`;
   }
 
   Swal.fire({
@@ -596,7 +720,9 @@ function confirmExitAndSubmit() {
     confirmButtonText: 'نعم، احفظ إجاباتي واخرج',
     cancelButtonText: 'الاستمرار في الحل',
     confirmButtonColor: '#e11d48',
-    cancelButtonColor: '#64748b'
+    cancelButtonColor: '#64748b',
+    allowEscapeKey: false,
+    allowOutsideClick: false
   }).then(res => {
     if (res.isConfirmed) {
       submitExam('تم حفظ الإجابات والخروج بواسطة الطالب');
@@ -619,6 +745,13 @@ async function submitExam(statusReason) {
   disableScreenCaptureProtection();
   document.body.classList.remove('exam-active-mode');
   removeSecurityWatermark();
+
+  // فك قفل لوحة المفاتيح
+  try {
+    if (navigator.keyboard && navigator.keyboard.unlock) {
+      navigator.keyboard.unlock();
+    }
+  } catch (e) {}
 
   // 1. تجميع الإجابات بدقة متناهية من الذاكرة السريعة
   const answers = { ...examAnswers };

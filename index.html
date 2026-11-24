@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
   <title>منصة الاختبارات الإلكترونية الذكية المؤمنة</title>
   
   <!-- المكتبات الأساسية الخارجية مثبتة بإصدارات محددة وهويات سلامة (SRI) -->
@@ -145,10 +145,10 @@
           </div>
         </div>
 
-        <form onsubmit="startStudentExam(event)" class="space-y-4">
+        <form onsubmit="startStudentExam(event)" class="space-y-4" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1.5">اسم الطالب بالكامل</label>
-            <input type="text" id="st-name" required class="input-field" placeholder="مثال: أحمد محمد علي">
+            <input type="text" id="st-name" required class="input-field" placeholder="مثال: أحمد محمد علي" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true">
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -174,18 +174,18 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1.5">الرقم التعريفي / الجامعي (اختياري)</label>
-              <input type="text" id="st-id" class="input-field font-mono" placeholder="مثال: 20261045 (اختياري)">
+              <input type="text" id="st-id" class="input-field font-mono" placeholder="مثال: 20261045 (اختياري)" autocomplete="off" data-lpignore="true">
             </div>
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1.5">كود الاختبار المعتمد</label>
-              <input type="text" id="st-exam-code" required dir="auto" class="input-field uppercase font-mono tracking-wider" placeholder="مثال: EX-9372">
+              <input type="text" id="st-exam-code" required dir="auto" class="input-field uppercase font-mono tracking-wider" placeholder="مثال: EX-9372" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true">
             </div>
           </div>
 
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1.5">كلمة المرور الخاصة بالطالب</label>
             <div class="password-wrapper">
-              <input type="password" id="st-password" required class="input-field font-mono" placeholder="اكتب كلمة المرور الخاصة بك الممنوحة لك...">
+              <input type="password" id="st-password" required class="input-field font-mono" placeholder="اكتب كلمة المرور الخاصة بك الممنوحة لك..." autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other">
               <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('st-password', this)" title="إظهار / إخفاء كلمة المرور" aria-label="إظهار أو إخفاء كلمة المرور">
                 <i class="fa-regular fa-eye"></i>
               </button>
@@ -201,6 +201,12 @@
 
     <!-- 2. قاعة الاختبار المؤمنة بالكامل -->
     <section id="exam-room" class="hidden fixed inset-0 bg-slate-50 z-50 overflow-y-auto no-select flex flex-col">
+      <!-- تنبيه حالة الشبكة الذكي عند انقطاع الاتصال المؤقت -->
+      <div id="network-offline-banner" class="hidden bg-amber-600 text-white text-xs px-4 py-2 font-bold text-center flex items-center justify-center gap-2 sticky top-0 z-40 animate-pulse">
+        <i class="fa-solid fa-wifi text-base"></i>
+        <span id="network-offline-banner-text">انقطع اتصال الإنترنت مؤقتاً - لا تقلق! إجاباتك محفوظة بالكامل على جهازك، ويمكنك الاستمرار في الحل وسيتم المزامنة تلقائياً.</span>
+      </div>
+
       <div class="sticky top-0 bg-white border-b border-slate-200 z-30">
         <div class="max-w-4xl mx-auto px-3 md:px-4 py-2.5 md:py-3 flex flex-wrap justify-between items-center gap-2">
           <div class="flex-1 min-w-[180px]">
@@ -212,6 +218,15 @@
             <button onclick="toggleTheme()" class="theme-toggle-btn text-xs" title="تبديل الوضع (نهاري / ليلي)" aria-label="تبديل الوضع الليلي والنهاري">
               <i class="fa-solid fa-moon"></i>
             </button>
+            <!-- أزرار تكبير وتصغير الخط لدعم القراءة المريحة على الموبايل والشاشات الصغيرة -->
+            <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700">
+              <button type="button" onclick="adjustExamFontSize(1)" class="px-2 py-1 text-slate-700 dark:text-slate-200 hover:text-primary transition-colors text-xs font-bold" title="تكبير خط الأسئلة" aria-label="تكبير الخط">
+                <i class="fa-solid fa-magnifying-glass-plus"></i> <span class="text-[10px]">A+</span>
+              </button>
+              <button type="button" onclick="adjustExamFontSize(-1)" class="px-2 py-1 text-slate-700 dark:text-slate-200 hover:text-primary transition-colors text-xs font-bold border-r border-slate-200 dark:border-slate-700" title="تصغير خط الأسئلة" aria-label="تصغير الخط">
+                <i class="fa-solid fa-magnifying-glass-minus"></i> <span class="text-[10px]">A-</span>
+              </button>
+            </div>
             <!-- زر الكاميرا للطالب للتحكم في البث المباشر والمراقبة -->
             <button id="student-camera-btn" onclick="toggleStudentCamera()" class="btn btn-outline text-xs font-bold px-2.5 py-1.5 text-slate-700">
               <i id="student-camera-icon" class="fa-solid fa-video-slash text-slate-400"></i>
@@ -229,9 +244,13 @@
         <div class="exam-progress-bar">
           <div id="exam-progress-fill" class="exam-progress-fill" style="width: 0%;"></div>
         </div>
-        <div class="max-w-4xl mx-auto px-3 md:px-4 py-1 flex justify-between text-[10px] md:text-[11px] text-slate-500 font-semibold">
-          <span id="exam-progress-text">تمت الإجابة: 0</span>
-          <span><i class="fa-solid fa-shield-cat text-emerald-600"></i> مراقبة وحماية نشطة</span>
+        <div class="max-w-4xl mx-auto px-3 md:px-4 py-1 flex justify-between items-center text-[10px] md:text-[11px] text-slate-500 font-semibold">
+          <div class="flex items-center gap-3">
+            <span id="exam-progress-text">تمت الإجابة: 0</span>
+            <span id="exam-flagged-count" class="hidden text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full text-[10px]"><i class="fa-solid fa-bookmark ml-1"></i> للمراجعة: 0</span>
+            <span id="exam-autosave-indicator" class="opacity-0 transition-opacity duration-300 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] flex items-center gap-1"><i class="fa-solid fa-circle-check"></i> تم الحفظ تلقائياً</span>
+          </div>
+          <span class="flex items-center gap-1"><i class="fa-solid fa-shield-cat text-emerald-600"></i> مراقبة وحماية نشطة</span>
         </div>
         <!-- شريط التنقل السريع بين الأسئلة مع تمييز المُجاب منها -->
         <div class="max-w-4xl mx-auto px-3 md:px-4 pb-2">
