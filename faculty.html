@@ -848,7 +848,7 @@
       if (cloudMonitoringInterval) clearInterval(cloudMonitoringInterval);
       if (!currentUser) return;
       fetchCloudCamFrames();
-      cloudMonitoringInterval = setInterval(fetchCloudCamFrames, 5000);
+      cloudMonitoringInterval = setInterval(fetchCloudCamFrames, 3500);
     }
 
     async function fetchCloudCamFrames() {

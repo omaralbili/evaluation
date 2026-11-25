@@ -963,6 +963,7 @@ body.exam-active-mode {
   }
 
   .q-nav-btn {
+  content-visibility: auto;
     min-width: 36px;
     height: 36px;
     font-size: 13px;
@@ -989,6 +990,7 @@ body.exam-active-mode {
 }
 
 .q-nav-btn {
+  content-visibility: auto;
   min-width: 32px;
   height: 32px;
   padding: 0 6px;
@@ -1058,6 +1060,7 @@ html.dark .q-nav-btn.is-flagged::after {
 
 html[data-theme="dark"] .q-nav-btn,
 html.dark .q-nav-btn {
+  content-visibility: auto;
   background: #1e293b;
   border-color: #334155;
   color: #cbd5e1;

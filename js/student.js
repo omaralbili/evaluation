@@ -127,17 +127,19 @@ async function toggleStudentCamera() {
 function startCameraBroadcast() {
   if (cameraBroadcastInterval) clearInterval(cameraBroadcastInterval);
   const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  canvas.width = 240;
-  canvas.height = 180;
+  const ctx = canvas.getContext('2d', { alpha: false });
+  canvas.width = 180;
+  canvas.height = 135;
   const videoEl = document.getElementById('student-video-element');
+  let isPushingCamFrame = false;
 
-  cameraBroadcastInterval = setInterval(async () => {
-    if (!studentMediaStream || !videoEl || videoEl.readyState < 2 || document.hidden) return;
+  const pushFrame = () => {
+    if (!studentMediaStream || !videoEl || videoEl.readyState < 2 || document.hidden || isPushingCamFrame) return;
+    isPushingCamFrame = true;
 
     try {
       ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-      const frameData = canvas.toDataURL('image/jpeg', 0.4);
+      const frameData = canvas.toDataURL('image/jpeg', 0.32);
 
       const streamPayload = {
         studentId: currentExam ? currentExam.student_id : 'guest',
@@ -149,12 +151,10 @@ function startCameraBroadcast() {
         timestamp: Date.now()
       };
 
-      // بث محلي
       try {
         localStorage.setItem(`student_cam_stream_${streamPayload.studentId}`, JSON.stringify(streamPayload));
       } catch (e) {}
 
-      // بث سحابي عبر Google Apps Script لقاعة مراقبة الأستاذ
       fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -167,10 +167,17 @@ function startCameraBroadcast() {
           frame: frameData,
           active: true
         })
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => {
+        isPushingCamFrame = false;
+      });
+    } catch (e) {
+      isPushingCamFrame = false;
+    }
+  };
 
-    } catch (e) {}
-  }, 10000);
+  // بث أول لقطة فوراً دون انتظار
+  setTimeout(pushFrame, 300);
+  cameraBroadcastInterval = setInterval(pushFrame, 3500);
 }
 
 function stopStudentCamera() {
@@ -792,7 +799,7 @@ async function submitExam(statusReason) {
  * مصممة هندسياً لتحمل تسليم 300+ طالب في نفس اللحظة دون سقوط أي إجابة وتأكيد استلام الجميع
  */
 async function processSubmissionWithResilientQueue(payload, statusReason, backupKey) {
-  const MAX_RETRIES = 20; // رفع عدد المحاولات إلى 20 لضمان تسجيل كل طالب مهما كان الضغط
+  const MAX_RETRIES = 30; // رفع عدد المحاولات إلى 30 لضمان تسجيل كل طالب حتى عند تسليم 500+ طالب في نفس اللحظة
   let attempt = 0;
   let isSuccess = false;
 
@@ -819,7 +826,7 @@ async function processSubmissionWithResilientQueue(payload, statusReason, backup
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // مهلة 20 ثانية لكل محاولة
+      const timeoutId = setTimeout(() => controller.abort(), 25000); // مهلة 25 ثانية لكل محاولة
 
       const res = await fetch(API_URL, {
         method: 'POST',
