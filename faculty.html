@@ -305,10 +305,29 @@
           </div>
         </div>
 
+        <div id="selected-results-bar" class="hidden mb-3 p-2.5 bg-blue-50 dark:bg-slate-800/80 border border-blue-200 dark:border-slate-700 rounded-xl flex flex-wrap items-center justify-between gap-2 animate-fade-in">
+          <div class="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+            <span class="bg-blue-600 text-white px-2.5 py-0.5 rounded-full" id="selected-results-count">0</span>
+            <span>طالب محدد</span>
+          </div>
+          <div class="flex items-center flex-wrap gap-2">
+            <button type="button" onclick="exportSelectedResultsToExcel()" class="btn btn-success text-xs font-bold py-1.5 px-3">
+              <i class="fa-solid fa-file-excel"></i> تنزيل درجات المحددين
+            </button>
+            <button type="button" onclick="deleteSelectedResults()" class="btn btn-danger text-xs font-bold py-1.5 px-3">
+              <i class="fa-solid fa-trash-can"></i> مسح المحددين نهائياً
+            </button>
+            <button type="button" onclick="clearResultsSelection()" class="btn btn-outline text-xs font-bold py-1.5 px-2.5">
+              إلغاء التحديد
+            </button>
+          </div>
+        </div>
+
         <div class="overflow-x-auto border rounded-lg">
           <table id="results-table" class="clean-table">
             <thead>
               <tr>
+                <th class="w-10 text-center"><input type="checkbox" id="select-all-results" onchange="toggleAllResultsSelection(this)" class="w-4 h-4 rounded border-slate-300 text-primary cursor-pointer" title="تحديد الكل"></th>
                 <th>التاريخ والوقت</th>
                 <th>كود الامتحان</th>
                 <th>اسم الطالب</th>
@@ -728,7 +747,7 @@
       if (!tbody) return;
 
       if (!res || res.status !== 'success' || !res.results || res.results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-slate-400">لا توجد نتائج مسجلة حتى الآن</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="p-6 text-center text-slate-400">لا توجد نتائج مسجلة حتى الآن</td></tr>`;
         return;
       }
 
@@ -749,6 +768,7 @@
 
         return `
           <tr>
+            <td class="text-center"><input type="checkbox" class="result-row-checkbox w-4 h-4 rounded border-slate-300 text-primary cursor-pointer" onchange="updateSelectedResultsBar()"></td>
             <td class="text-slate-500 font-mono text-xs">${safeDate}</td>
             <td><span class="font-bold text-sky-600">${safeCode}</span></td>
             <td class="font-semibold text-slate-800">${safeName}</td>

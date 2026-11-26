@@ -291,7 +291,7 @@ async function loadDashboardData() {
   if (!tbody) return;
 
   if (res.results.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-slate-400">لا توجد نتائج مسجلة حتى الآن</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="p-6 text-center text-slate-400">لا توجد نتائج مسجلة حتى الآن</td></tr>`;
     return;
   }
 
@@ -312,6 +312,7 @@ async function loadDashboardData() {
 
     return `
       <tr>
+        <td class="text-center"><input type="checkbox" class="result-row-checkbox w-4 h-4 rounded border-slate-300 text-primary cursor-pointer" onchange="updateSelectedResultsBar()"></td>
         <td class="text-slate-500 font-mono text-xs">${safeDate}</td>
         <td><span class="font-bold text-blue-600">${safeCode}</span></td>
         <td class="font-semibold text-slate-800">${safeName}</td>
@@ -427,7 +428,7 @@ async function exportResultsToExcel() {
   // استخراج جميع أكواد المقررات المميزة مع إحصاء عدد الطلاب لكل مقرر
   const examCodeCounts = {};
   allRows.forEach(row => {
-    const code = row.cells[1] ? row.cells[1].innerText.trim() : '';
+    const code = row.cells[2] ? row.cells[2].innerText.trim() : '';
     if (code) {
       examCodeCounts[code] = (examCodeCounts[code] || 0) + 1;
     }
@@ -501,7 +502,7 @@ async function exportResultsToExcel() {
   let targetRows = allRows;
   if (selectedCode !== 'ALL') {
     targetRows = allRows.filter(row => {
-      const code = row.cells[1] ? row.cells[1].innerText.trim().toUpperCase() : '';
+      const code = row.cells[2] ? row.cells[2].innerText.trim().toUpperCase() : '';
       return code === selectedCode.toUpperCase();
     });
   }
@@ -511,12 +512,12 @@ async function exportResultsToExcel() {
     return Swal.fire('تنبيه', `لا توجد نتائج مسجلة لكود المقرر (${selectedCode})`, 'warning');
   }
 
-  // رؤوس الأعمدة
-  const headerCells = Array.from(headerRow.querySelectorAll('th')).map(th => th.innerText.trim());
+  // رؤوس الأعمدة (استبعاد عمود التحديد Checkbox)
+  const headerCells = Array.from(headerRow.querySelectorAll('th')).slice(1).map(th => th.innerText.trim());
 
-  // استخراج بيانات الصفوف
+  // استخراج بيانات الصفوف (استبعاد عمود التحديد Checkbox)
   let dataRows = targetRows.map(row => {
-    return Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim());
+    return Array.from(row.querySelectorAll('td')).slice(1).map(td => td.innerText.trim());
   });
 
   // تحديد أولويات الترتيب للفروع بدقة متناهية: المنصورة (1) ثم منية النصر (2) ثم ميت غمر (3)
@@ -625,7 +626,7 @@ async function confirmClearResultsAdmin() {
   // استخراج الأكواد المميزة وعدد النتائج لكل كود
   const examCodeCounts = {};
   allRows.forEach(row => {
-    const code = row.cells[1] ? row.cells[1].innerText.trim() : '';
+    const code = row.cells[2] ? row.cells[2].innerText.trim() : '';
     if (code) {
       examCodeCounts[code] = (examCodeCounts[code] || 0) + 1;
     }
@@ -856,4 +857,182 @@ function renderExamAnalytics(container, data) {
 function showExamAnalyticsFromSelect() {
   const select = document.getElementById('analytics-exam-select');
   if (select && select.value) showExamAnalytics(select.value);
+}
+
+// ==========================================
+// 6. تحديد الطلاب فردياً (Checkbox) - تنزيل درجات أو مسح نهائي
+// ==========================================
+
+function toggleAllResultsSelection(masterCheckbox) {
+  const checked = masterCheckbox ? masterCheckbox.checked : false;
+  const checkboxes = document.querySelectorAll('#results-table tbody .result-row-checkbox');
+  checkboxes.forEach(cb => {
+    const row = cb.closest('tr');
+    // تحديد الصفوف الظاهرة فقط (احترام الفلتر والبحث)
+    if (row && row.style.display !== 'none') {
+      cb.checked = checked;
+    }
+  });
+  updateSelectedResultsBar();
+}
+
+function updateSelectedResultsBar() {
+  const checkboxes = Array.from(document.querySelectorAll('#results-table tbody .result-row-checkbox'));
+  const selected = checkboxes.filter(cb => cb.checked);
+  const bar = document.getElementById('selected-results-bar');
+  const countEl = document.getElementById('selected-results-count');
+  const masterCb = document.getElementById('select-all-results');
+
+  if (countEl) countEl.innerText = String(selected.length);
+  if (bar) {
+    if (selected.length > 0) {
+      bar.classList.remove('hidden');
+    } else {
+      bar.classList.add('hidden');
+    }
+  }
+  if (masterCb) {
+    const visibleCheckboxes = checkboxes.filter(cb => {
+      const row = cb.closest('tr');
+      return row && row.style.display !== 'none';
+    });
+    masterCb.checked = visibleCheckboxes.length > 0 && visibleCheckboxes.every(cb => cb.checked);
+  }
+}
+
+function clearResultsSelection() {
+  const masterCb = document.getElementById('select-all-results');
+  if (masterCb) masterCb.checked = false;
+  document.querySelectorAll('#results-table tbody .result-row-checkbox').forEach(cb => {
+    cb.checked = false;
+  });
+  updateSelectedResultsBar();
+}
+
+async function exportSelectedResultsToExcel() {
+  const table = document.getElementById('results-table');
+  if (!table) return;
+
+  const selectedCheckboxes = Array.from(table.querySelectorAll('tbody .result-row-checkbox:checked'));
+  if (selectedCheckboxes.length === 0) {
+    return Swal.fire('تنبيه', 'يرجى تحديد طالب واحد على الأقل لتنزيل درجاته.', 'warning');
+  }
+
+  Swal.fire({
+    title: 'جاري تجهيز ملف الدرجات...',
+    text: `يتم تصدير بيانات (${selectedCheckboxes.length}) طالب محدد`,
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading()
+  });
+
+  try {
+    await ensureXlsxLoaded();
+  } catch (e) {
+    return Swal.fire('خطأ في التحميل', 'تعذر تحميل مكتبة التصدير. تحقق من اتصال الإنترنت وحاول مرة أخرى.', 'error');
+  }
+
+  const headerRow = table.querySelector('thead tr');
+  const headerCells = Array.from(headerRow.querySelectorAll('th')).slice(1).map(th => th.innerText.trim());
+  const dataRows = selectedCheckboxes.map(cb => {
+    const row = cb.closest('tr');
+    return Array.from(row.querySelectorAll('td')).slice(1).map(td => td.innerText.trim());
+  });
+
+  const branchPriority = { 'المنصورة': 1, 'منية النصر': 2, 'منيه النصر': 2, 'ميت غمر': 3 };
+  const gradePriority = {
+    'الفرقة الأولى': 1, 'الفرقة الاولى': 1, 'الأولى': 1, 'الاولى': 1,
+    'الفرقة الثانية': 2, 'الفرقة التانية': 2, 'الثانية': 2, 'التانية': 2,
+    'الفرقة الثالثة': 3, 'الفرقة التالتة': 3, 'الثالثة': 3, 'التالتة': 3,
+    'الفرقة الرابعة': 4, 'الرابعة': 4
+  };
+
+  dataRows.sort((a, b) => {
+    const bA = branchPriority[(a[5] || '').trim()] || 99;
+    const bB = branchPriority[(b[5] || '').trim()] || 99;
+    if (bA !== bB) return bA - bB;
+    const gA = gradePriority[(a[4] || '').trim()] || 99;
+    const gB = gradePriority[(b[4] || '').trim()] || 99;
+    if (gA !== gB) return gA - gB;
+    return (a[2] || '').trim().localeCompare((b[2] || '').trim(), 'ar');
+  });
+
+  const finalSheetData = [headerCells, ...dataRows];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(finalSheetData);
+  ws['!cols'] = [
+    { wch: 22 }, { wch: 15 }, { wch: 28 }, { wch: 16 },
+    { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 32 }
+  ];
+  if (!wb.Workbook) wb.Workbook = {};
+  if (!wb.Workbook.Views) wb.Workbook.Views = [];
+  wb.Workbook.Views[0] = { RTL: true };
+
+  XLSX.utils.book_append_sheet(wb, ws, 'نتائج الطلاب المحددين');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const fileName = `نتائج_طلاب_محددين_${selectedCheckboxes.length}_${dateStr}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+
+  Swal.fire({
+    title: 'تم التصدير بنجاح!',
+    text: `تم تنزيل كشف درجات (${dataRows.length}) طالب محدد بنجاح.`,
+    icon: 'success',
+    timer: 2400,
+    showConfirmButton: false
+  });
+}
+
+async function deleteSelectedResults() {
+  const table = document.getElementById('results-table');
+  if (!table) return;
+
+  const selectedCheckboxes = Array.from(table.querySelectorAll('tbody .result-row-checkbox:checked'));
+  if (selectedCheckboxes.length === 0) {
+    return Swal.fire('تنبيه', 'يرجى تحديد طالب واحد على الأقل لمسح نتيجته.', 'warning');
+  }
+
+  const targets = selectedCheckboxes.map(cb => {
+    const row = cb.closest('tr');
+    return {
+      timestamp: row.cells[1] ? row.cells[1].innerText.trim() : '',
+      exam_code: row.cells[2] ? row.cells[2].innerText.trim() : '',
+      student_name: row.cells[3] ? row.cells[3].innerText.trim() : ''
+    };
+  });
+
+  const { isConfirmed } = await Swal.fire({
+    title: `مسح (${targets.length}) نتيجة نهائياً؟`,
+    html: `
+      <div class="text-right text-xs space-y-2 py-1">
+        <p class="text-slate-600 font-semibold">سيتم مسح نتائج الطلاب المحددين فقط من سجل النتائج نهائياً.</p>
+        <div class="bg-amber-50 border border-amber-200 text-amber-900 p-2.5 rounded-xl text-[11px]">
+          <i class="fa-solid fa-shield-halved ml-1 text-amber-600"></i>
+          سيتم حفظ نسخة احتياطية في شيت (ResultsBackup) تلقائياً قبل الحذف.
+        </div>
+      </div>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'نعم، امسح المحددين نهائياً',
+    cancelButtonText: 'إلغاء',
+    confirmButtonColor: '#e11d48',
+    cancelButtonColor: '#64748b'
+  });
+
+  if (!isConfirmed) return;
+
+  const res = await apiCall({
+    action: 'delete_selected_results',
+    targets: targets,
+    creator: currentUser ? currentUser.username : 'admin',
+    role: currentUser ? currentUser.role : 'admin'
+  });
+
+  if (res && res.status === 'success') {
+    clearResultsSelection();
+    Swal.fire('تم المسح بنجاح', res.message, 'success');
+    if (typeof loadDashboardData === 'function') loadDashboardData();
+    if (typeof loadFacultyDashboard === 'function') loadFacultyDashboard();
+  } else {
+    Swal.fire('خطأ', res ? res.message : 'تعذر مسح النتائج المحددة', 'error');
+  }
 }

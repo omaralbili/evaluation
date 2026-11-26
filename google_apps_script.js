@@ -1031,6 +1031,70 @@ function doPost(e) {
     }
 
     // -------------------------------------------------------------
+    // 7.1 مسح نتائج طلاب محددين نهائياً (Delete Selected Results)
+    // -------------------------------------------------------------
+    if (action === 'delete_selected_results') {
+      const session = getAuthSession(data);
+      if (!session) return createJsonResponse({ status: 'error', message: 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد' });
+
+      const targets = Array.isArray(data.targets) ? data.targets : [];
+      if (targets.length === 0) {
+        return createJsonResponse({ status: 'error', message: 'لم يتم تحديد أي طالب للمسح' });
+      }
+
+      // إذا كان المستخدم عضو هيئة تدريس، نحصر الحذف في الامتحانات التي أنشأها فقط
+      let allowedExams = null;
+      if (session.r !== 'admin') {
+        const examsSheet = ss.getSheetByName(SHEET_EXAMS);
+        const examsRows = examsSheet.getDataRange().getValues();
+        allowedExams = new Set();
+        for (let e = 1; e < examsRows.length; e++) {
+          if (String(examsRows[e][3] || '').trim().toLowerCase() === String(session.u).toLowerCase()) {
+            const eCode = String(examsRows[e][0] || '').trim().toUpperCase();
+            if (eCode) allowedExams.add(eCode);
+          }
+        }
+      }
+
+      const targetSet = new Set(targets.map(t => {
+        const ts = String(t.timestamp || '').trim();
+        const code = String(t.exam_code || '').trim().toUpperCase();
+        const name = normalizeArabicText(t.student_name || '');
+        return `${ts}||${code}||${name}`;
+      }));
+
+      const resultsSheet = ss.getSheetByName(SHEET_RESULTS);
+      const rows = resultsSheet.getDataRange().getValues();
+      const backupSheet = getOrCreateBackupSheet(ss);
+      const nowBackup = Utilities.formatDate(new Date(), 'Africa/Cairo', 'yyyy-MM-dd HH:mm:ss');
+      let deletedCount = 0;
+
+      for (let i = rows.length - 1; i >= 1; i--) {
+        const rowTs = String(rows[i][0] || '').trim();
+        const rowCode = String(rows[i][1] || '').trim().toUpperCase();
+        const rowName = normalizeArabicText(rows[i][2] || '');
+        const key = `${rowTs}||${rowCode}||${rowName}`;
+
+        if (targetSet.has(key)) {
+          if (allowedExams && !allowedExams.has(rowCode)) {
+            continue;
+          }
+          if (backupSheet) {
+            backupSheet.appendRow([nowBackup, 'SELECTED_DELETE', ...rows[i]]);
+          }
+          resultsSheet.deleteRow(i + 1);
+          deletedCount++;
+        }
+      }
+
+      return createJsonResponse({
+        status: 'success',
+        deleted_count: deletedCount,
+        message: `تم مسح (${deletedCount}) نتيجة محددة نهائياً بنجاح، مع حفظ نسخة احتياطية في الأرشيف.`
+      });
+    }
+
+    // -------------------------------------------------------------
     // 8. نظام المراقبة الحية السحابي الفوري (Cloud Cam Relay & Broadcast)
     // -------------------------------------------------------------
 
